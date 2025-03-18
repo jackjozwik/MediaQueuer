@@ -1,0 +1,9 @@
+/* src/lib/global.css */
+
+/* Display page styles */
+body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background-color: black;
+  }

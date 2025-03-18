@@ -1,0 +1,38 @@
+/* src/routes/display/display.css */
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background-color: #000;
+  color: white;
+}
+
+html, body {
+  height: 100%;
+  width: 100%;
+}
+
+/* Fix for the media info panel */
+.media-info {
+  position: absolute !important;
+  bottom: 30px !important;
+  left: 30px !important;
+  width: 60% !important;
+  background-color: rgba(0, 0, 0, 0.7) !important;
+  border-radius: 8px !important;
+  padding: 1rem !important;
+}
+
+.media-info h2 {
+  font-size: 1.8rem !important;
+  font-weight: 700 !important;
+  margin-top: 0 !important;
+}
+
+.description {
+  font-size: 1.1rem !important;
+}
+
+.creator {
+  opacity: 0.9 !important;
+}

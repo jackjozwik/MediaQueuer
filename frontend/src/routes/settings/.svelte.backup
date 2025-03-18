@@ -1,0 +1,873 @@
+<!-- src/routes/settings/+page.svelte -->
+<script>
+    import { onMount } from 'svelte';
+    import { user, token } from '$lib/auth';
+    
+    // User form data
+    let userForm = {
+      firstName: '',
+      lastName: '',
+      preferredName: '',
+      email: '',
+      currentPassword: '',
+      newPassword: '',
+      confirmPassword: ''
+    };
+    
+    // Profile image state
+    let profileImage = null;
+    let previewUrl = null;
+    
+    // Status flags
+    let saving = false;
+    let success = null;
+    let error = null;
+    let passwordError = null;
+    
+    // User uploads
+    let userUploads = {
+      pending: [],
+      approved: [],
+      rejected: []
+    };
+    let loadingUploads = {
+      pending: true,
+      approved: true,
+      rejected: true
+    };
+    let activeTab = 'profile';
+    
+    // Initialize form with user data
+    $: if ($user) {
+      userForm = {
+        ...userForm,
+        firstName: $user.firstName || '',
+        lastName: $user.lastName || '',
+        preferredName: $user.preferredName || '',
+        email: $user.email || ''
+      };
+    }
+    
+    // Handle profile image selection
+    function handleFileChange(event) {
+      const selectedFile = event.target.files[0];
+      
+      if (selectedFile) {
+        if (!selectedFile.type.startsWith('image/')) {
+          error = 'Please select an image file.';
+          return;
+        }
+        
+        profileImage = selectedFile;
+        
+        // Create preview URL
+        if (previewUrl) {
+          URL.revokeObjectURL(previewUrl);
+        }
+        previewUrl = URL.createObjectURL(selectedFile);
+      }
+    }
+    
+    // Save user profile
+    async function saveProfile() {
+      // Reset status
+      error = null;
+      success = null;
+      passwordError = null;
+      saving = true;
+      
+      // Validate password fields
+      if (userForm.newPassword || userForm.confirmPassword || userForm.currentPassword) {
+        if (!userForm.currentPassword) {
+          passwordError = 'Current password is required to change password';
+          saving = false;
+          return;
+        }
+        
+        if (userForm.newPassword !== userForm.confirmPassword) {
+          passwordError = 'New passwords do not match';
+          saving = false;
+          return;
+        }
+        
+        if (userForm.newPassword.length < 6) {
+          passwordError = 'New password must be at least 6 characters';
+          saving = false;
+          return;
+        }
+      }
+      
+      try {
+        // Update user info
+        const userData = {
+          firstName: userForm.firstName,
+          lastName: userForm.lastName,
+          preferredName: userForm.preferredName,
+          email: userForm.email
+        };
+        
+        // Add password fields if changing password
+        if (userForm.newPassword && userForm.currentPassword) {
+          userData.currentPassword = userForm.currentPassword;
+          userData.newPassword = userForm.newPassword;
+        }
+        
+        // Send update request
+        const response = await fetch('/api/users/update', {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${$token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(userData)
+        });
+        
+        const result = await response.json();
+        
+        if (!result.success) {
+          error = result.message || 'Failed to update profile';
+          return;
+        }
+        
+        // If also uploading profile image
+        if (profileImage) {
+          const formData = new FormData();
+          formData.append('profileImage', profileImage);
+          
+          const imageResponse = await fetch('/api/users/update-profile-image', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${$token}`
+            },
+            body: formData
+          });
+          
+          const imageResult = await imageResponse.json();
+          
+          if (!imageResult.success) {
+            error = imageResult.message || 'Failed to update profile image';
+            return;
+          }
+          
+          // Update user store with new profile image
+          user.update(u => ({
+            ...u,
+            profileImage: imageResult.data.profileImage
+          }));
+        }
+        
+        // Update user in store if successful
+        user.update(u => ({
+          ...u,
+          firstName: userForm.firstName,
+          lastName: userForm.lastName,
+          preferredName: userForm.preferredName,
+          email: userForm.email
+        }));
+        
+        // Clear password fields
+        userForm.currentPassword = '';
+        userForm.newPassword = '';
+        userForm.confirmPassword = '';
+        
+        success = 'Profile updated successfully';
+      } catch (err) {
+        console.error('Error updating profile:', err);
+        error = 'Failed to update profile. Please try again.';
+      } finally {
+        saving = false;
+      }
+    }
+    
+    // Fetch user uploads
+    async function fetchUserUploads() {
+      try {
+        // Fetch pending uploads
+        loadingUploads.pending = true;
+        const pendingResponse = await fetch('/api/media/user-uploads?status=pending', {
+          headers: {
+            'Authorization': `Bearer ${$token}`
+          }
+        });
+        
+        const pendingResult = await pendingResponse.json();
+        
+        if (pendingResult.success) {
+          userUploads.pending = pendingResult.data.media || [];
+        }
+        loadingUploads.pending = false;
+        
+        // Fetch approved uploads
+        loadingUploads.approved = true;
+        const approvedResponse = await fetch('/api/media/user-uploads?status=approved', {
+          headers: {
+            'Authorization': `Bearer ${$token}`
+          }
+        });
+        
+        const approvedResult = await approvedResponse.json();
+        
+        if (approvedResult.success) {
+          userUploads.approved = approvedResult.data.media || [];
+        }
+        loadingUploads.approved = false;
+        
+        // Fetch rejected uploads
+        loadingUploads.rejected = true;
+        const rejectedResponse = await fetch('/api/media/user-uploads?status=rejected', {
+          headers: {
+            'Authorization': `Bearer ${$token}`
+          }
+        });
+        
+        const rejectedResult = await rejectedResponse.json();
+        
+        if (rejectedResult.success) {
+          userUploads.rejected = rejectedResult.data.media || [];
+        }
+        loadingUploads.rejected = false;
+        
+      } catch (err) {
+        console.error('Error fetching user uploads:', err);
+        loadingUploads = {
+          pending: false,
+          approved: false,
+          rejected: false
+        };
+      }
+    }
+    
+    // Initialize component
+    onMount(() => {
+      fetchUserUploads();
+      
+      return () => {
+        if (previewUrl) {
+          URL.revokeObjectURL(previewUrl);
+        }
+      };
+    });
+  </script>
+  
+  <svelte:head>
+    <title>User Settings</title>
+  </svelte:head>
+  
+  <div class="settings-container">
+    <h1>User Settings</h1>
+    
+    <div class="tabs">
+      <button 
+        class="tab-btn" 
+        class:active={activeTab === 'profile'} 
+        on:click={() => activeTab = 'profile'}
+      >
+        Profile Settings
+      </button>
+      <button 
+        class="tab-btn" 
+        class:active={activeTab === 'uploads'} 
+        on:click={() => activeTab = 'uploads'}
+      >
+        My Uploads
+      </button>
+    </div>
+    
+    <!-- Profile Tab -->
+    {#if activeTab === 'profile'}
+      <div class="tab-content">
+        <div class="settings-grid">
+          <!-- User Info Form -->
+          <div class="user-info-form">
+            <h2>Personal Information</h2>
+            
+            {#if success}
+              <div class="alert success">
+                {success}
+              </div>
+            {/if}
+            
+            {#if error}
+              <div class="alert error">
+                {error}
+              </div>
+            {/if}
+            
+            <form on:submit|preventDefault={saveProfile}>
+              <div class="form-grid">
+                <div class="form-group">
+                  <label for="firstName">First Name</label>
+                  <input type="text" id="firstName" bind:value={userForm.firstName} required />
+                </div>
+                
+                <div class="form-group">
+                  <label for="lastName">Last Name</label>
+                  <input type="text" id="lastName" bind:value={userForm.lastName} required />
+                </div>
+                
+                <div class="form-group">
+                  <label for="preferredName">Preferred Name (Optional)</label>
+                  <input type="text" id="preferredName" bind:value={userForm.preferredName} />
+                  <div class="help-text">If provided, this will be displayed instead of your first name</div>
+                </div>
+                
+                <div class="form-group">
+                  <label for="email">Email</label>
+                  <input type="email" id="email" bind:value={userForm.email} required />
+                </div>
+              </div>
+              
+              <h3>Change Password</h3>
+              {#if passwordError}
+                <div class="alert error">
+                  {passwordError}
+                </div>
+              {/if}
+              
+              <div class="form-grid">
+                <div class="form-group">
+                  <label for="currentPassword">Current Password</label>
+                  <input type="password" id="currentPassword" bind:value={userForm.currentPassword} />
+                  <div class="help-text">Required only if changing password</div>
+                </div>
+                
+                <div class="form-group">
+                  <label for="newPassword">New Password</label>
+                  <input type="password" id="newPassword" bind:value={userForm.newPassword} />
+                </div>
+                
+                <div class="form-group">
+                  <label for="confirmPassword">Confirm New Password</label>
+                  <input type="password" id="confirmPassword" bind:value={userForm.confirmPassword} />
+                </div>
+              </div>
+              
+              <div class="form-actions">
+                <button type="submit" class="btn primary" disabled={saving}>
+                  {saving ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+          
+          <!-- Profile Image -->
+          <div class="profile-image-section">
+            <h2>Profile Photo</h2>
+            
+            <div class="profile-preview">
+              {#if previewUrl}
+                <img src={previewUrl} alt="Preview" class="preview-image" />
+              {:else if $user && $user.profileImage}
+                <img src={$user.profileImage} alt="Current profile" class="preview-image" />
+              {:else}
+                <div class="placeholder-image">
+                  <span>{$user ? ($user.firstName ? $user.firstName.charAt(0) : 'U') : 'U'}</span>
+                </div>
+              {/if}
+            </div>
+            
+            <div class="upload-controls">
+              <label for="profile-image" class="btn secondary upload-btn">
+                Select Image
+                <input 
+                  type="file" 
+                  id="profile-image" 
+                  accept="image/*" 
+                  on:change={handleFileChange}
+                  disabled={saving}
+                  class="hidden-input"
+                />
+              </label>
+              
+              {#if previewUrl}
+                <button 
+                  type="button" 
+                  class="btn text"
+                  on:click={() => { 
+                    profileImage = null; 
+                    URL.revokeObjectURL(previewUrl);
+                    previewUrl = null;
+                  }}
+                  disabled={saving}
+                >
+                  Cancel
+                </button>
+              {/if}
+              
+              <p class="help-text">Recommended: Square image, 500x500 pixels</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    {/if}
+    
+    <!-- Uploads Tab -->
+    {#if activeTab === 'uploads'}
+      <div class="tab-content">
+        <h2>My Uploads</h2>
+        
+        <div class="uploads-tabs">
+          <button 
+            class="subtab-btn" 
+            class:active={uploadTab === 'pending'}
+            on:click={() => uploadTab = 'pending'}
+          >
+            Pending ({userUploads.pending.length})
+          </button>
+          <button 
+            class="subtab-btn" 
+            class:active={uploadTab === 'approved'}
+            on:click={() => uploadTab = 'approved'}
+          >
+            Approved ({userUploads.approved.length})
+          </button>
+          <button 
+            class="subtab-btn" 
+            class:active={uploadTab === 'rejected'}
+            on:click={() => uploadTab = 'rejected'}
+          >
+            Rejected ({userUploads.rejected.length})
+          </button>
+        </div>
+        
+        <!-- Pending Media -->
+        {#if uploadTab === 'pending'}
+          <div class="upload-list">
+            {#if loadingUploads.pending}
+              <div class="loading">Loading pending uploads...</div>
+            {:else if userUploads.pending.length === 0}
+              <div class="empty">No pending uploads.</div>
+            {:else}
+              {#each userUploads.pending as media (media.id)}
+                <div class="upload-item">
+                  <div class="media-preview">
+                    {#if media.file_type === 'image' || media.file_type.startsWith('image/')}
+                      <img src={media.file_url} alt={media.title} />
+                    {:else if media.file_type === 'video' || media.file_type.startsWith('video/')}
+                      <video src={media.file_url} controls muted></video>
+                    {:else}
+                      <div class="unknown-media">{media.file_type}</div>
+                    {/if}
+                  </div>
+                  <div class="media-details">
+                    <h3>{media.title || 'Untitled'}</h3>
+                    <p class="description">{media.description || 'No description'}</p>
+                    <p class="metadata">
+                      <span class="status pending">Pending Approval</span>
+                      <span class="date">Uploaded: {new Date(media.created_at).toLocaleDateString()}</span>
+                    </p>
+                  </div>
+                </div>
+              {/each}
+            {/if}
+          </div>
+        {/if}
+        
+        <!-- Approved Media -->
+        {#if uploadTab === 'approved'}
+          <div class="upload-list">
+            {#if loadingUploads.approved}
+              <div class="loading">Loading approved uploads...</div>
+            {:else if userUploads.approved.length === 0}
+              <div class="empty">No approved uploads.</div>
+            {:else}
+              {#each userUploads.approved as media (media.id)}
+                <div class="upload-item">
+                  <div class="media-preview">
+                    {#if media.file_type === 'image' || media.file_type.startsWith('image/')}
+                      <img src={media.file_url} alt={media.title} />
+                    {:else if media.file_type === 'video' || media.file_type.startsWith('video/')}
+                      <video src={media.file_url} controls muted></video>
+                    {:else}
+                      <div class="unknown-media">{media.file_type}</div>
+                    {/if}
+                  </div>
+                  <div class="media-details">
+                    <h3>{media.title || 'Untitled'}</h3>
+                    <p class="description">{media.description || 'No description'}</p>
+                    <p class="metadata">
+                      <span class="status approved">Approved</span>
+                      <span class="date">Approved: {new Date(media.approved_at).toLocaleDateString()}</span>
+                    </p>
+                  </div>
+                </div>
+              {/each}
+            {/if}
+          </div>
+        {/if}
+        
+        <!-- Rejected Media -->
+        {#if uploadTab === 'rejected'}
+          <div class="upload-list">
+            {#if loadingUploads.rejected}
+              <div class="loading">Loading rejected uploads...</div>
+            {:else if userUploads.rejected.length === 0}
+              <div class="empty">No rejected uploads.</div>
+            {:else}
+              {#each userUploads.rejected as media (media.id)}
+                <div class="upload-item">
+                  <div class="media-preview">
+                    {#if media.file_type === 'image' || media.file_type.startsWith('image/')}
+                      <img src={media.file_url} alt={media.title} />
+                    {:else if media.file_type === 'video' || media.file_type.startsWith('video/')}
+                      <video src={media.file_url} controls muted></video>
+                    {:else}
+                      <div class="unknown-media">{media.file_type}</div>
+                    {/if}
+                  </div>
+                  <div class="media-details">
+                    <h3>{media.title || 'Untitled'}</h3>
+                    <p class="description">{media.description || 'No description'}</p>
+                    <p class="metadata">
+                      <span class="status rejected">Rejected</span>
+                      <span class="date">Rejected: {new Date(media.approved_at).toLocaleDateString()}</span>
+                    </p>
+                  </div>
+                </div>
+              {/each}
+            {/if}
+          </div>
+        {/if}
+      </div>
+    {/if}
+  </div>
+  
+  <style>
+    .settings-container {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 1rem;
+    }
+    
+    h1 {
+      margin-bottom: 1.5rem;
+    }
+    
+    .settings-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2rem;
+    }
+    
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+    
+    .form-group:nth-child(odd):last-child {
+      grid-column: span 2;
+    }
+    
+    .form-group {
+      margin-bottom: 1rem;
+    }
+    
+    h2 {
+      margin-top: 0;
+      margin-bottom: 1.5rem;
+    }
+    
+    h3 {
+      margin-top: 2rem;
+      margin-bottom: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid #eee;
+    }
+    
+    label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-weight: 500;
+    }
+    
+    input[type="text"],
+    input[type="email"],
+    input[type="password"] {
+      width: 100%;
+      padding: 0.75rem;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 1rem;
+    }
+    
+    .help-text {
+      font-size: 0.85rem;
+      color: #666;
+      margin-top: 0.25rem;
+    }
+    
+    .alert {
+      padding: 0.75rem;
+      border-radius: 4px;
+      margin-bottom: 1rem;
+    }
+    
+    .error {
+      background-color: #ffebee;
+      color: #c62828;
+      border: 1px solid #ef9a9a;
+    }
+    
+    .success {
+      background-color: #e8f5e9;
+      color: #2e7d32;
+      border: 1px solid #a5d6a7;
+    }
+    
+    .form-actions {
+      margin-top: 1.5rem;
+    }
+    
+    .btn {
+      padding: 0.75rem 1.5rem;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 1rem;
+      font-weight: 500;
+      transition: background-color 0.2s;
+    }
+    
+    .btn:disabled {
+      opacity: 0.7;
+      cursor: not-allowed;
+    }
+    
+    .primary {
+      background-color: #1976d2;
+      color: white;
+    }
+    
+    .primary:hover:not(:disabled) {
+      background-color: #1565c0;
+    }
+    
+    .secondary {
+      background-color: #f5f5f5;
+      color: #333;
+      border: 1px solid #ddd;
+    }
+    
+    .secondary:hover:not(:disabled) {
+      background-color: #e0e0e0;
+    }
+    
+    .text {
+      background: none;
+      color: #1976d2;
+      padding: 0.5rem;
+    }
+    
+    .text:hover:not(:disabled) {
+      text-decoration: underline;
+    }
+    
+    .profile-preview {
+      width: 180px;
+      height: 180px;
+      margin: 0 auto 1.5rem;
+      border-radius: 50%;
+      overflow: hidden;
+      border: 3px solid #ddd;
+      background-color: #eee;
+    }
+    
+    .preview-image {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    
+    .placeholder-image {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background-color: #1976d2;
+      color: white;
+    }
+    
+    .placeholder-image span {
+      font-size: 5rem;
+      font-weight: bold;
+    }
+    
+    .upload-controls {
+      text-align: center;
+    }
+    
+    .hidden-input {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+    
+    .upload-btn {
+      position: relative;
+      overflow: hidden;
+      cursor: pointer;
+    }
+    
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid #ddd;
+      margin-bottom: 1.5rem;
+    }
+    
+    .tab-btn {
+      padding: 0.75rem 1.5rem;
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 1rem;
+      font-weight: 500;
+      color: #555;
+      position: relative;
+    }
+    
+    .tab-btn:hover {
+      color: #1976d2;
+    }
+    
+    .tab-btn.active {
+      color: #1976d2;
+    }
+    
+    .tab-btn.active::after {
+      content: '';
+      position: absolute;
+      bottom: -1px;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      background-color: #1976d2;
+    }
+    
+    .tab-content {
+      padding-top: 1rem;
+    }
+    
+    .uploads-tabs {
+      display: flex;
+      margin-bottom: 1.5rem;
+    }
+    
+    .subtab-btn {
+      padding: 0.5rem 1rem;
+      background-color: #f5f5f5;
+      border: 1px solid #ddd;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    
+    .subtab-btn:first-child {
+      border-radius: 4px 0 0 4px;
+    }
+    
+    .subtab-btn:last-child {
+      border-radius: 0 4px 4px 0;
+    }
+    
+    .subtab-btn.active {
+      background-color: #1976d2;
+      color: white;
+      border-color: #1976d2;
+    }
+    
+    .upload-list {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    
+    .upload-item {
+      display: flex;
+      background-color: #f9f9f9;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    
+    .media-preview {
+      width: 200px;
+      height: 120px;
+      overflow: hidden;
+      background-color: #000;
+      flex-shrink: 0;
+    }
+    
+    .media-preview img, .media-preview video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    
+    .media-details {
+      flex: 1;
+      padding: 1rem;
+    }
+    
+    .media-details h3 {
+      margin: 0 0 0.5rem 0;
+      padding: 0;
+      border: none;
+      font-size: 1.2rem;
+    }
+    
+    .description {
+      margin: 0.5rem 0;
+      font-size: 0.9rem;
+    }
+    
+    .metadata {
+      display: flex;
+      gap: 1rem;
+      font-size: 0.8rem;
+      margin-top: 0.5rem;
+    }
+    
+    .status {
+      font-weight: 500;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+    }
+    
+    .status.pending {
+      background-color: #fff8e1;
+      color: #f57f17;
+    }
+    
+    .status.approved {
+      background-color: #e8f5e9;
+      color: #2e7d32;
+    }
+    
+    .status.rejected {
+      background-color: #ffebee;
+      color: #c62828;
+    }
+    
+    .loading, .empty {
+      padding: 2rem;
+      text-align: center;
+      background-color: #f5f5f5;
+      border-radius: 4px;
+    }
+    
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+      .settings-grid {
+        grid-template-columns: 1fr;
+      }
+      
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+      
+      .form-group:nth-child(odd):last-child {
+        grid-column: span 1;
+      }
+    }
+  </style>
