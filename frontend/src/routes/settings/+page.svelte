@@ -20,20 +20,23 @@
 
 	// Status flags
 	let saving = false;
-	let uploading = false;
 	let success = null;
 	let error = null;
 	let passwordError = null;
+	let userFormInitialized = false;
 
-	// Initialize form with user data
-	$: if ($user) {
+	// Initialize form with user data - only once
+	$: if ($user && !userFormInitialized) {
 		userForm = {
-			...userForm,
 			firstName: $user.firstName || '',
 			lastName: $user.lastName || '',
 			preferredName: $user.preferredName || '',
-			email: $user.email || ''
+			email: $user.email || '',
+			currentPassword: '',
+			newPassword: '',
+			confirmPassword: ''
 		};
+		userFormInitialized = true;
 	}
 
 	// Handle profile image selection
@@ -49,14 +52,14 @@
 			profileImage = selectedFile;
 
 			// Create preview URL
-			if (previewUrl) {
+			if (previewUrl && previewUrl.startsWith('blob:')) {
 				URL.revokeObjectURL(previewUrl);
 			}
 			previewUrl = URL.createObjectURL(selectedFile);
 		}
 	}
 
-	// Save user profile
+	// Save user profile (now includes image upload)
 	async function saveProfile() {
 		// Reset status
 		error = null;
@@ -64,28 +67,62 @@
 		passwordError = null;
 		saving = true;
 
-		// Validate password fields
-		if (userForm.newPassword || userForm.confirmPassword || userForm.currentPassword) {
-			if (!userForm.currentPassword) {
-				passwordError = 'Current password is required to change password';
-				saving = false;
-				return;
-			}
-
-			if (userForm.newPassword !== userForm.confirmPassword) {
-				passwordError = 'New passwords do not match';
-				saving = false;
-				return;
-			}
-
-			if (userForm.newPassword.length < 6) {
-				passwordError = 'New password must be at least 6 characters';
-				saving = false;
-				return;
-			}
-		}
-
 		try {
+			// First, upload profile image if one is selected
+			if (profileImage) {
+				const formData = new FormData();
+				formData.append('profileImage', profileImage);
+
+				const imageResponse = await fetch('/api/users/update-profile-image', {
+					method: 'POST',
+					headers: {
+						Authorization: `Bearer ${$token}`
+					},
+					body: formData
+				});
+
+				const imageResult = await imageResponse.json();
+
+				if (imageResult.success) {
+					// Update user store with new profile image
+					user.update((u) => ({
+						...u,
+						profileImage: imageResult.data.profileImage
+					}));
+
+					// Clean up preview URL
+					if (previewUrl && previewUrl.startsWith('blob:')) {
+						URL.revokeObjectURL(previewUrl);
+					}
+					profileImage = null;
+				} else {
+					error = imageResult.message || 'Profile image upload failed';
+					saving = false;
+					return;
+				}
+			}
+
+			// Validate password fields
+			if (userForm.newPassword || userForm.confirmPassword || userForm.currentPassword) {
+				if (!userForm.currentPassword) {
+					passwordError = 'Current password is required to change password';
+					saving = false;
+					return;
+				}
+
+				if (userForm.newPassword !== userForm.confirmPassword) {
+					passwordError = 'New passwords do not match';
+					saving = false;
+					return;
+				}
+
+				if (userForm.newPassword.length < 6) {
+					passwordError = 'New password must be at least 6 characters';
+					saving = false;
+					return;
+				}
+			}
+
 			// Update user info
 			const userData = {
 				firstName: userForm.firstName,
@@ -141,85 +178,45 @@
 		}
 	}
 
-	// Upload profile image
-	async function uploadProfileImage() {
-		if (!profileImage) {
-			error = 'Please select an image to upload';
-			return;
-		}
-
-		error = null;
-		success = null;
-		uploading = true;
-
+	// Load user profile data from API
+	async function loadUserProfile() {
 		try {
-			// Create form data
-			const formData = new FormData();
-			formData.append('profileImage', profileImage);
-
-			const response = await fetch('/api/users/update-profile-image', {
-				method: 'POST',
-				headers: {
-					Authorization: `Bearer ${$token}`
-				},
-				body: formData
+			const response = await fetch('/api/users/profile', {
+				headers: { Authorization: `Bearer ${$token}` }
 			});
 
-			const result = await response.json();
-
-			if (result.success) {
-				success = 'Profile image updated successfully';
-
-				// Update user store with new profile image
-				user.update((u) => ({
-					...u,
-					profileImage: result.data.profileImage
-				}));
-
-				// Clean up preview URL
-				if (previewUrl) {
-					URL.revokeObjectURL(previewUrl);
-					previewUrl = null;
+			const data = await response.json();
+			if (data.success) {
+				// Update form with retrieved data
+				userForm = {
+					firstName: data.data.user.firstName || '',
+					lastName: data.data.user.lastName || '',
+					preferredName: data.data.user.preferredName || '',
+					email: data.data.user.email || '',
+					currentPassword: '',
+					newPassword: '',
+					confirmPassword: ''
+				};
+				
+				// Check if profile image exists
+				if (data.data.user.profileImage) {
+					previewUrl = data.data.user.profileImage;
 				}
-
-				profileImage = null;
-			} else {
-				error = result.message || 'Upload failed';
+				
+				userFormInitialized = true;
 			}
-		} catch (err) {
-			console.error('Upload error:', err);
-			error = 'Error uploading file. Please try again.';
-		} finally {
-			uploading = false;
+		} catch (error) {
+			console.error('Failed to load user profile:', error);
 		}
 	}
 
-	// Clean up preview URL on unmount
+	// Initialize on mount
 	onMount(() => {
-		// Fetch current user data to ensure we have the latest
-		const fetchUserProfile = async () => {
-			try {
-				const response = await fetch('/api/users/profile', {
-					headers: {
-						Authorization: `Bearer ${$token}`
-					}
-				});
-
-				const result = await response.json();
-
-				if (result.success && result.data && result.data.user) {
-					// Update the user store
-					user.set(result.data.user);
-				}
-			} catch (err) {
-				console.error('Error fetching user profile:', err);
-			}
-		};
-
-		fetchUserProfile();
-
+		loadUserProfile();
+		
+		// Clean up on unmount
 		return () => {
-			if (previewUrl) {
+			if (previewUrl && previewUrl.startsWith('blob:')) {
 				URL.revokeObjectURL(previewUrl);
 			}
 		};
@@ -255,21 +252,30 @@
 					<div class="form-group">
 						<label for="firstName">First Name</label>
 						<input
-							bind:value={userForm.firstName}
 							type="text"
-							placeholder="First Name"
-							class="your-existing-class"
+							id="firstName"
+							bind:value={userForm.firstName}
+							required
 						/>
 					</div>
 
 					<div class="form-group">
 						<label for="lastName">Last Name</label>
-						<input type="text" id="lastName" bind:value={userForm.lastName} required />
+						<input 
+                            type="text" 
+                            id="lastName" 
+                            bind:value={userForm.lastName} 
+                            required 
+                        />
 					</div>
 
 					<div class="form-group">
 						<label for="preferredName">Preferred Name (Optional)</label>
-						<input type="text" id="preferredName" bind:value={userForm.preferredName} />
+						<input 
+                            type="text" 
+                            id="preferredName" 
+                            bind:value={userForm.preferredName} 
+                        />
 						<div class="help-text">
 							If provided, this will be displayed instead of your first name
 						</div>
@@ -277,7 +283,12 @@
 
 					<div class="form-group">
 						<label for="email">Email</label>
-						<input type="email" id="email" bind:value={userForm.email} required />
+						<input 
+                            type="email" 
+                            id="email" 
+                            bind:value={userForm.email} 
+                            required 
+                        />
 					</div>
 				</div>
 
@@ -291,18 +302,30 @@
 				<div class="form-grid">
 					<div class="form-group">
 						<label for="currentPassword">Current Password</label>
-						<input type="password" id="currentPassword" bind:value={userForm.currentPassword} />
+						<input 
+                            type="password" 
+                            id="currentPassword" 
+                            bind:value={userForm.currentPassword} 
+                        />
 						<div class="help-text">Required only if changing password</div>
 					</div>
 
 					<div class="form-group">
 						<label for="newPassword">New Password</label>
-						<input type="password" id="newPassword" bind:value={userForm.newPassword} />
+						<input 
+                            type="password" 
+                            id="newPassword" 
+                            bind:value={userForm.newPassword} 
+                        />
 					</div>
 
 					<div class="form-group">
 						<label for="confirmPassword">Confirm New Password</label>
-						<input type="password" id="confirmPassword" bind:value={userForm.confirmPassword} />
+						<input 
+                            type="password" 
+                            id="confirmPassword" 
+                            bind:value={userForm.confirmPassword} 
+                        />
 					</div>
 				</div>
 
@@ -317,18 +340,6 @@
 		<!-- Profile Image -->
 		<div class="profile-image-section settings-card">
 			<h2>Profile Photo</h2>
-
-			{#if error}
-				<div class="alert error">
-					{error}
-				</div>
-			{/if}
-
-			{#if success}
-				<div class="alert success">
-					{success}
-				</div>
-			{/if}
 
 			<div class="profile-preview">
 				{#if previewUrl}
@@ -350,27 +361,30 @@
 						id="profile-image"
 						accept="image/*"
 						on:change={handleFileChange}
-						disabled={uploading}
+						disabled={saving}
 						class="hidden-input"
 					/>
 				</label>
 
-				{#if previewUrl}
+				{#if previewUrl && profileImage}
 					<button
 						type="button"
 						class="btn text"
 						on:click={() => {
 							profileImage = null;
-							URL.revokeObjectURL(previewUrl);
-							previewUrl = null;
+							if (previewUrl.startsWith('blob:')) {
+								URL.revokeObjectURL(previewUrl);
+							}
+							previewUrl = $user?.profileImage || null;
 						}}
-						disabled={uploading}
+						disabled={saving}
 					>
 						Clear
 					</button>
 				{/if}
 			</div>
 
+			<p class="help-text">Profile image will be uploaded when you click "Save Changes"</p>
 			<p class="help-text">Recommended: Square image, 500x500 pixels</p>
 		</div>
 	</div>

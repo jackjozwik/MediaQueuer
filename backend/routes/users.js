@@ -40,10 +40,23 @@ const profileUpload = multer({
 // Add GET profile route - this was missing
 router.get('/profile', verifyToken, async (req, res) => {
     try {
-        const user = db.prepare(`
-      SELECT id, username, role, first_name, last_name, preferred_name, email, profile_image
-      FROM users WHERE id = ?
-    `).get(req.user.id);
+        // Get columns in users table to check if profile_image exists
+        const tableInfo = db.prepare("PRAGMA table_info(users)").all();
+        const hasProfileImage = tableInfo.some(column => column.name === 'profile_image');
+        
+        // Build query based on available columns
+        let query = `
+          SELECT id, username, role, first_name, last_name, preferred_name, email
+        `;
+        
+        // Add profile_image to query only if the column exists
+        if (hasProfileImage) {
+            query += `, profile_image`;
+        }
+        
+        query += ` FROM users WHERE id = ?`;
+        
+        const user = db.prepare(query).get(req.user.id);
 
         if (!user) {
             return res.status(404).json({
@@ -63,7 +76,7 @@ router.get('/profile', verifyToken, async (req, res) => {
                     lastName: user.last_name,
                     preferredName: user.preferred_name,
                     email: user.email,
-                    profileImage: user.profile_image
+                    profileImage: user.profile_image || null
                 }
             }
         });
