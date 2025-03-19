@@ -12,6 +12,11 @@
   let success = null;
   let previewUrl = null;
   
+  // QR Code variables
+  let qrCodeFile = null;
+  let qrCodePreviewUrl = null;
+  let uploadingQRCode = false;
+  
   // Check if user is admin or faculty
   $: isAdminOrFaculty = $user && ($user.role === 'admin' || $user.role === 'faculty');
   
@@ -22,12 +27,30 @@
     description = '';
     duration = 10;
     previewUrl = null;
+    qrCodeFile = null;
+    qrCodePreviewUrl = null;
   }
   
   // Handle file selection from input
   function handleFileChange(event) {
     const selectedFile = event.target.files[0];
     processFile(selectedFile);
+  }
+  
+  // Handle QR code selection from input
+  function handleQRCodeChange(event) {
+    const selectedFile = event.target.files[0];
+    processQRCode(selectedFile);
+  }
+  
+  // Process the selected QR code
+  function processQRCode(selectedFile) {
+    if (selectedFile) {
+      qrCodeFile = selectedFile;
+      
+      // Create preview URL
+      qrCodePreviewUrl = URL.createObjectURL(selectedFile);
+    }
   }
   
   // Process the selected file
@@ -66,6 +89,40 @@
     const droppedFiles = event.dataTransfer.files;
     if (droppedFiles.length > 0) {
       processFile(droppedFiles[0]);
+    }
+  }
+  
+  // Upload QR code for media item
+  async function uploadQRCode(mediaId) {
+    if (!qrCodeFile) return true; // Return true if no QR code to upload
+    
+    try {
+      uploadingQRCode = true;
+      
+      const formData = new FormData();
+      formData.append('qrCode', qrCodeFile);
+      
+      const response = await fetch(`/api/media/${mediaId}/qrcode`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${$token}`
+        },
+        body: formData
+      });
+      
+      const result = await response.json();
+      
+      if (!result.success) {
+        console.error('QR code upload failed:', result.message);
+        return false;
+      }
+      
+      return true;
+    } catch (err) {
+      console.error('QR code upload error:', err);
+      return false;
+    } finally {
+      uploadingQRCode = false;
     }
   }
   
@@ -109,7 +166,19 @@
       const result = await response.json();
       
       if (result.success) {
-        success = result.message || 'Media uploaded successfully';
+        // If media upload successful and QR code was provided, upload that too
+        if (qrCodeFile && result.data && result.data.id) {
+          const qrSuccess = await uploadQRCode(result.data.id);
+          
+          if (qrSuccess) {
+            success = 'Media and QR code uploaded successfully';
+          } else {
+            success = 'Media uploaded but QR code failed to upload';
+          }
+        } else {
+          success = result.message || 'Media uploaded successfully';
+        }
+        
         resetForm();
       } else {
         error = result.message || 'Upload failed';
@@ -122,11 +191,23 @@
     }
   }
   
-  // Clean up preview URL on unmount
+  // Clear QR code
+  function clearQRCode() {
+    qrCodeFile = null;
+    if (qrCodePreviewUrl) {
+      URL.revokeObjectURL(qrCodePreviewUrl);
+      qrCodePreviewUrl = null;
+    }
+  }
+  
+  // Clean up preview URLs on unmount
   onMount(() => {
     return () => {
       if (previewUrl) {
         URL.revokeObjectURL(previewUrl);
+      }
+      if (qrCodePreviewUrl) {
+        URL.revokeObjectURL(qrCodePreviewUrl);
       }
     };
   });
@@ -227,6 +308,57 @@
           <div class="help-text">How long to display this image before moving to the next item</div>
         </div>
       {/if}
+      
+      <!-- QR Code Section -->
+      <div class="form-group qr-code-section">
+        <label for="qrCode">QR Code (Optional):</label>
+        <div class="qr-code-container">
+          <div class="qr-code-preview-area">
+            {#if qrCodePreviewUrl}
+              <img src={qrCodePreviewUrl} alt="QR Code Preview" class="qr-code-preview" />
+            {:else}
+              <div class="qr-code-placeholder">
+                <div class="icon">🔗</div>
+                <p>No QR code selected</p>
+              </div>
+            {/if}
+          </div>
+          
+          <div class="qr-code-controls">
+            <input 
+              type="file" 
+              id="qrCode" 
+              accept="image/*" 
+              on:change={handleQRCodeChange}
+              disabled={uploading}
+              class="qr-file-input"
+              style="display: none;"
+            />
+            <button 
+              type="button" 
+              class="btn secondary qr-button" 
+              on:click={() => document.getElementById('qrCode').click()} 
+              disabled={uploading}
+            >
+              Select QR Code
+            </button>
+            
+            {#if qrCodeFile}
+              <button 
+                type="button" 
+                class="btn clear-button" 
+                on:click={clearQRCode} 
+                disabled={uploading}
+              >
+                Clear
+              </button>
+            {/if}
+          </div>
+        </div>
+        <div class="help-text">
+          Upload a QR code to link to your portfolio, website, or social media. This will be displayed alongside your content.
+        </div>
+      </div>
       
       <div class="form-actions">
         <button type="submit" class="btn primary" disabled={uploading}>
@@ -411,5 +543,78 @@
   
   .secondary:hover:not(:disabled) {
     background-color: #e0e0e0;
+  }
+  
+  .clear-button {
+    background-color: transparent;
+    color: #d32f2f;
+    border: 1px solid #d32f2f;
+  }
+  
+  .clear-button:hover:not(:disabled) {
+    background-color: rgba(211, 47, 47, 0.1);
+  }
+  
+  /* QR Code styles */
+  .qr-code-section {
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid #eee;
+  }
+  
+  .qr-code-container {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    margin-bottom: 0.5rem;
+  }
+  
+  .qr-code-preview-area {
+    width: 120px;
+    height: 120px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background-color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  
+  .qr-code-preview {
+    max-width: 100%;
+    max-height: 100%;
+  }
+  
+  .qr-code-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background-color: #f9f9f9;
+    color: #666;
+  }
+  
+  .qr-code-placeholder .icon {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+  }
+  
+  .qr-code-placeholder p {
+    margin: 0;
+    font-size: 0.8rem;
+    text-align: center;
+  }
+  
+  .qr-code-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  
+  .qr-button {
+    white-space: nowrap;
   }
 </style>

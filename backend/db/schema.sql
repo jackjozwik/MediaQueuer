@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS media (
   approved_at DATETIME,
   approved_by INTEGER,
   metadata TEXT, -- JSON string with additional data
+  qr_code TEXT, -- Path to QR code image
   FOREIGN KEY (user_id) REFERENCES users(id),
   FOREIGN KEY (approved_by) REFERENCES users(id)
 );

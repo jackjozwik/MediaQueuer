@@ -3,7 +3,6 @@
 	import { onMount, onDestroy } from 'svelte';
   import Debug from './Debug.svelte';
 
-
 	// Accept data from server-side load function
 	export let data;
 
@@ -155,24 +154,32 @@
     // Add a debug flag
     let showDebug = false;
   
-  // Toggle debug view with Ctrl+Alt+D
-  function handleKeydown(event) {
-    if (event.ctrlKey && event.altKey && event.key === 'd') {
-      showDebug = !showDebug;
+    // Check if QR code exists for the current item
+    $: hasQRCode = currentItem && currentItem.qr_code && currentItem.qr_code.trim() !== '';
+    
+    // For debugging QR code
+    $: if (currentItem) {
+        console.log('Current item QR code:', currentItem.qr_code);
     }
-  }
+  
+    // Toggle debug view with Ctrl+Alt+D
+    function handleKeydown(event) {
+        if (event.ctrlKey && event.altKey && event.key === 'd') {
+        showDebug = !showDebug;
+        }
+    }
 
-  onMount(() => {
-    // Add keydown listener for debug toggle
-    window.addEventListener('keydown', handleKeydown);
-    
-    // ...existing onMount code...
-    
-    return () => {
-      window.removeEventListener('keydown', handleKeydown);
-      // ...existing cleanup code...
-    };
-  });
+    onMount(() => {
+        // Add keydown listener for debug toggle
+        window.addEventListener('keydown', handleKeydown);
+        
+        // ...existing onMount code...
+        
+        return () => {
+        window.removeEventListener('keydown', handleKeydown);
+        // ...existing cleanup code...
+        };
+    });
 </script>
 
 <svelte:head>
@@ -180,7 +187,7 @@
 </svelte:head>
 
 <div class="display-container">
-  <Debug item={currentItem} visible={showDebug} />
+    <Debug item={currentItem} visible={showDebug} />
 
 	{#if loading}
 		<div class="loading">
@@ -233,24 +240,42 @@
 				{/if}
 
 				<div class="media-info" class:hidden={currentItem.metadata?.hide_info}>
-					{#if !currentItem.metadata?.hide_title}
-						<h2>{currentItem.title || 'Untitled'}</h2>
-					{/if}
+                    <div class="info-content">
+                        <!-- Profile image section -->
+                        <div class="profile-section">
+                            {#if currentItem.profile_image}
+                                <div class="profile-image">
+                                    <img src={currentItem.profile_image} alt="Profile" />
+                                </div>
+                            {:else}
+                                <div class="profile-placeholder"></div>
+                            {/if}
+                        </div>
 
-					{#if currentItem.description && !currentItem.metadata?.hide_description}
-						<p class="description">{currentItem.description}</p>
-					{/if}
+                        <!-- Text content section -->
+                        <div class="text-section">
+                            {#if !currentItem.metadata?.hide_title}
+                                <h2 class="title">{currentItem.title || 'Untitled'}</h2>
+                            {/if}
 
-					{#if !currentItem.metadata?.hide_creator}
-						<p class="creator">
-							{#if currentItem.profile_image}
-								<span class="profile-image">
-									<img src={currentItem.profile_image} alt="Profile" />
-								</span>
-							{/if}
-							Created by: {currentItem.full_name || currentItem.uploaded_by || 'Unknown'}
-						</p>
-					{/if}
+                            {#if currentItem.description && !currentItem.metadata?.hide_description}
+                                <p class="description">{currentItem.description}</p>
+                            {/if}
+
+                            {#if !currentItem.metadata?.hide_creator}
+                                <p class="creator">
+                                    Created by: {currentItem.full_name || currentItem.uploaded_by || 'Unknown'}
+                                </p>
+                            {/if}
+                        </div>
+
+                        <!-- QR code section - only shown if one exists -->
+                        {#if hasQRCode}
+                            <div class="qr-code-section">
+                                <img src={currentItem.qr_code} alt="QR Code" class="qr-code" />
+                            </div>
+                        {/if}
+                    </div>
 				</div>
 			{/if}
 		</div>
@@ -306,11 +331,91 @@
 		position: absolute;
 		bottom: 0;
 		left: 0;
-		width: 100%;
 		background-color: rgba(0, 0, 0, 0.7);
-		padding: 1rem;
 		box-sizing: border-box;
+        width: auto;
+        max-width: min(650px, 65%); /* Cap the width to prevent stretching */
+        border-top-right-radius: 8px;
+        /* Ensure flush left */
+        margin-left: 0;
+        padding-left: 0;
 	}
+    
+    .info-content {
+        display: flex;
+        align-items: center;
+        padding: 16px;
+    }
+
+    /* Profile image section */
+    .profile-section {
+        margin-right: 20px;
+        flex-shrink: 0; /* Prevent profile from shrinking */
+    }
+    
+    .profile-image, .profile-placeholder {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        overflow: hidden;
+        border: 2px solid rgba(255, 255, 255, 0.5);
+        background-color: #333;
+    }
+    
+    .profile-image img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    
+    /* Text content section */
+    .text-section {
+        flex: 1;
+        margin-right: 20px;
+        min-width: 0; /* This is important for proper text truncation */
+        max-width: 100%; /* Ensure text section doesn't grow too wide */
+    }
+    
+    .title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin: 0 0 6px 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    .description {
+        font-size: 1rem;
+        margin: 0 0 6px 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        opacity: 0.9;
+    }
+    
+    .creator {
+        font-size: 0.9rem;
+        margin: 0;
+        opacity: 0.7;
+    }
+    
+    /* QR code section */
+    .qr-code-section {
+        border-left: 1px solid rgba(255, 255, 255, 0.3);
+        padding-left: 20px;
+        flex-shrink: 0; /* Prevent QR code from shrinking */
+    }
+    
+    .qr-code {
+        width: 80px;
+        height: 80px;
+        background-color: #fff;
+        padding: 4px;
+        border-radius: 4px;
+    }
 
 	.video-element {
 		width: 100vw;
@@ -323,17 +428,6 @@
 		max-width: 100vw;
 		max-height: 100vh;
 		object-fit: contain;
-	}
-
-	.description {
-		margin: 0.5rem 0;
-		font-size: 1rem;
-	}
-
-	.creator {
-		margin: 0.5rem 0 0 0;
-		font-size: 0.9rem;
-		opacity: 0.8;
 	}
 
 	/* Hide video controls initially, show on hover */
@@ -355,22 +449,6 @@
 		opacity: 1;
 	}
 
-	.profile-image {
-		display: inline-block;
-		width: 30px;
-		height: 30px;
-		border-radius: 50%;
-		overflow: hidden;
-		margin-right: 10px;
-		border: 2px solid rgba(255, 255, 255, 0.5);
-	}
-
-	.profile-image img {
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-	}
-
 	.media-info.hidden {
 		display: none;
 	}
@@ -389,4 +467,41 @@
 		background-color: rgba(255, 0, 0, 0.3);
 		border-radius: 8px;
 	}
+    
+    /* Media queries for responsive design */
+    /* Media queries for responsive design */
+    @media (max-width: 768px) {
+        .title {
+            font-size: 1.2rem;
+        }
+        
+        .description {
+            font-size: 0.9rem;
+        }
+        
+        .creator {
+            font-size: 0.8rem;
+        }
+        
+        .profile-image, .profile-placeholder {
+            width: 45px;
+            height: 45px;
+        }
+        
+        .qr-code {
+            width: 65px;
+            height: 65px;
+        }
+        
+        .media-info {
+            max-width: 90%;
+        }
+    }
+    
+    /* For wider screens, ensure the info box doesn't stretch too much */
+    @media (min-width: 1600px) {
+        .media-info {
+            max-width: 550px; /* Absolute max width for very large displays */
+        }
+    }
 </style>

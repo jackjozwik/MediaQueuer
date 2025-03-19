@@ -76,7 +76,144 @@ const uploadMedia = async (req, res) => {
   }
 };
 
-// Get approved media for display
+// Upload QR code for a specific media item
+const uploadMediaQRCode = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // Check if file was uploaded
+    if (!req.file) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'No QR code file uploaded' 
+      });
+    }
+    
+    // Check if media exists and belongs to the user or user is admin
+    const media = db.prepare(`
+      SELECT m.id, m.user_id FROM media m
+      WHERE m.id = ?
+    `).get(id);
+    
+    if (!media) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Media not found' 
+      });
+    }
+    
+    // Check if user owns this media or is admin
+    if (media.user_id !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'You do not have permission to update this media item' 
+      });
+    }
+    
+    // Update media with QR code path
+    const qrCodePath = `/uploads/qrcodes/${path.basename(req.file.path)}`;
+    
+    const result = db.prepare(`
+      UPDATE media
+      SET qr_code = ?
+      WHERE id = ?
+    `).run(qrCodePath, id);
+    
+    if (result.changes === 0) {
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Failed to update media with QR code' 
+      });
+    }
+    
+    return res.json({
+      success: true,
+      message: 'QR code uploaded successfully',
+      data: {
+        qrCode: qrCodePath
+      }
+    });
+  } catch (error) {
+    console.error('Upload QR code error:', error);
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Internal server error' 
+    });
+  }
+};
+
+// Delete QR code for a specific media item
+const deleteMediaQRCode = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // Check if media exists and belongs to the user or user is admin
+    const media = db.prepare(`
+      SELECT m.id, m.user_id, m.qr_code FROM media m
+      WHERE m.id = ?
+    `).get(id);
+    
+    if (!media) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Media not found' 
+      });
+    }
+    
+    // Check if user owns this media or is admin
+    if (media.user_id !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'You do not have permission to update this media item' 
+      });
+    }
+    
+    // Check if media has QR code
+    if (!media.qr_code) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Media has no QR code to delete' 
+      });
+    }
+    
+    // Delete the file if it exists
+    try {
+      const filePath = path.join(__dirname, '..', media.qr_code.replace(/^\//, ''));
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    } catch (err) {
+      console.error('Error deleting QR code file:', err);
+    }
+    
+    // Update media to remove QR code
+    const result = db.prepare(`
+      UPDATE media
+      SET qr_code = NULL
+      WHERE id = ?
+    `).run(id);
+    
+    if (result.changes === 0) {
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Failed to update media' 
+      });
+    }
+    
+    return res.json({
+      success: true,
+      message: 'QR code deleted successfully'
+    });
+  } catch (error) {
+    console.error('Delete QR code error:', error);
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Internal server error' 
+    });
+  }
+};
+
+// Update the getApprovedMedia function to include qr_code field from media table
 const getApprovedMedia = async (req, res) => {
   try {
     // Check if profile_image column exists in the users table
@@ -88,6 +225,7 @@ const getApprovedMedia = async (req, res) => {
       SELECT 
         m.id, m.title, m.description, m.file_path, m.file_type, 
         m.duration, m.display_order, m.created_at, m.approved_at, m.metadata,
+        m.qr_code, 
         u.username as uploaded_by, 
         u.first_name, u.last_name, u.preferred_name,
         COALESCE(u.preferred_name, u.first_name) || ' ' || u.last_name as full_name
@@ -409,5 +547,7 @@ module.exports = {
   rejectMedia,
   deleteMedia,
   updateMedia,
-  updateMediaOrder
+  updateMediaOrder,
+  uploadMediaQRCode,
+  deleteMediaQRCode
 };
