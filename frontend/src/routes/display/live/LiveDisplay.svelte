@@ -1,8 +1,8 @@
-<!-- src/routes/display/live/+page.svelte -->
+<!-- src/routes/display/live/LiveDisplay.svelte -->
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { mediaItems, displayState } from '$lib/displayStore';
-  import DisplayModeIndicator from '../../../components/DisplayModeIndicator.svelte';
+  import { fade } from 'svelte/transition';
   
   export let data;
   
@@ -12,12 +12,9 @@
   let imageTimer = null;
   let initialSync = true;
   let error = null;
-  let showIndicator = true;
-  let indicatorTimeout;
   
   onMount(async () => {
     console.log("LiveDisplay mounted");
-    hideIndicatorAfterDelay();
     
     // Initial poll to sync with server
     try {
@@ -38,22 +35,17 @@
           console.log(`Synced with server at index ${currentIndex}`);
         }
         
-        setTimeout(() => {
-          initialSync = false;
-        }, 500); // Small delay to ensure video loads properly
+        initialSync = false;
       }
     } catch (err) {
       console.error("Error syncing with server:", err);
       error = `Failed to sync: ${err.message}`;
       initialSync = false;
     }
-    
-    return () => {
-      clearImageTimer();
-      if (indicatorTimeout) {
-        clearTimeout(indicatorTimeout);
-      }
-    };
+  });
+  
+  onDestroy(() => {
+    clearImageTimer();
   });
   
   function clearImageTimer() {
@@ -90,18 +82,6 @@
     }
   }
   
-  function hideIndicatorAfterDelay() {
-    if (indicatorTimeout) {
-      clearTimeout(indicatorTimeout);
-    }
-    
-    showIndicator = true;
-    
-    indicatorTimeout = setTimeout(() => {
-      showIndicator = false;
-    }, 5000);
-  }
-  
   // Get current media item
   $: currentItem = $mediaItems[currentIndex] || null;
   
@@ -109,7 +89,7 @@
     (currentItem.file_type === 'video' || currentItem.file_type.startsWith('video/'));
     
   $: isImage = currentItem && 
-    (currentItem.file_type === 'image' || currentItem.file_type.startsWith('image/'));
+    (currentItem.file_type == 'image' || currentItem.file_type.startsWith('image/'));
   
   // Force URL to have proper leading slash
   $: mediaUrl = currentItem?.file_url?.startsWith('/') 
@@ -149,21 +129,6 @@
 </svelte:head>
 
 <div class="display-container">
-  {#if showIndicator}
-    <div
-      class="mode-indicator"
-      on:click={() => (showIndicator = true)}
-      on:mouseenter={() => (showIndicator = true)}
-    >
-      <div class="mode-label">
-        <span>LIVE VIEW</span>
-      </div>
-      <a href="/display" class="mode-toggle">Switch to Individual Mode</a>
-    </div>
-  {/if}
-  
-  <DisplayModeIndicator mode="live" />
-  
   {#if initialSync}
     <div class="loading">
       <p>Syncing with display system...</p>
@@ -407,46 +372,5 @@
     margin-top: 1rem;
     max-width: 80%;
     overflow: auto;
-  }
-  
-  /* Mode indicator styles */
-  .mode-indicator {
-    position: fixed;
-    top: 10px;
-    right: 10px;
-    background-color: rgba(0, 0, 0, 0.7);
-    color: white;
-    padding: 8px 12px;
-    border-radius: 8px;
-    z-index: 1010;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    font-size: 14px;
-    backdrop-filter: blur(5px);
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
-    transition: opacity 0.3s ease;
-  }
-  
-  .mode-label {
-    display: flex;
-    align-items: center;
-    font-weight: 600;
-    gap: 8px;
-  }
-  
-  .mode-toggle {
-    color: rgba(255, 255, 255, 0.7);
-    text-decoration: none;
-    font-size: 12px;
-    text-align: center;
-    padding: 4px;
-    border-radius: 4px;
-    transition: all 0.2s ease;
-  }
-  
-  .mode-toggle:hover {
-    background-color: rgba(255, 255, 255, 0.2);
-    color: white;
   }
 </style>

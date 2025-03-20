@@ -84,4 +84,68 @@ router.get('/display-state', mediaController.getDisplayState);
 router.post('/display-state/media', verifyToken, isAdmin, mediaController.updateDisplayMedia);
 router.post('/display-state/video', verifyToken, isAdmin, mediaController.updateVideoState);
 
+router.get('/display-state/debug', verifyToken, isAdmin, (req, res) => {
+  try {
+    // Get timer and state status
+    const status = displayState.getTimerStatus();
+    
+    // Get all media items for reference
+    const media = db.prepare(`
+      SELECT id, title, file_type, duration
+      FROM media
+      WHERE status = 'approved'
+      ORDER BY 
+        CASE WHEN display_order IS NULL THEN 1 ELSE 0 END, 
+        display_order ASC,
+        approved_at DESC
+    `).all();
+    
+    // Return detailed status
+    return res.json({
+      success: true,
+      data: {
+        status,
+        mediaItems: media,
+        timestamp: new Date().toISOString(),
+        serverTime: new Date().toLocaleTimeString()
+      }
+    });
+  } catch (error) {
+    console.error('Error getting debug status:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
+// Add manual advance endpoint (makes testing easier)
+router.post('/display-state/advance', verifyToken, isAdmin, (req, res) => {
+  try {
+    // Trigger auto-advance manually
+    const newState = displayState.triggerAutoAdvance();
+    
+    if (!newState) {
+      return res.status(400).json({
+        success: false,
+        message: 'Could not advance - check server logs'
+      });
+    }
+    
+    return res.json({
+      success: true,
+      data: { 
+        state: newState,
+        message: 'Manual advance triggered successfully'
+      }
+    });
+  } catch (error) {
+    console.error('Error triggering advance:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
 module.exports = router;
