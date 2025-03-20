@@ -2,7 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const mediaController = require('../controllers/mediaController');
-const { verifyToken, isFacultyOrAdmin } = require('../middleware/auth');
+const { verifyToken, isFacultyOrAdmin, isAdmin } = require('../middleware/auth'); // Add isAdmin here
 const { upload, handleUploadErrors } = require('../middleware/upload');
 const multer = require('multer');
 const path = require('path');
@@ -76,5 +76,12 @@ router.delete(
   verifyToken, 
   mediaController.deleteMediaQRCode
 );
+
+// Public routes for getting display state
+router.get('/display-state', mediaController.getDisplayState);
+
+// Protected routes for updating display state (admin only)
+router.post('/display-state/media', verifyToken, isAdmin, mediaController.updateDisplayMedia);
+router.post('/display-state/video', verifyToken, isAdmin, mediaController.updateVideoState);
 
 module.exports = router;

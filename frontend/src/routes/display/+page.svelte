@@ -1,7 +1,9 @@
 <!-- src/routes/display/+page.svelte -->
 <script>
 	import { onMount, onDestroy } from 'svelte';
-  import Debug from './Debug.svelte';
+	import { user } from '$lib/auth';
+	import DisplayModeIndicator from '../../components/DisplayModeIndicator.svelte';
+	import Debug from './Debug.svelte';
 
 	// Accept data from server-side load function
 	export let data;
@@ -14,6 +16,13 @@
 	let mediaElement;
 	let isPlaying = false;
 	let apiResponse = null; // For debugging
+
+	// Determine if user is an admin
+	let showIndicator = true;
+	let indicatorTimeout;
+
+	// Admin check
+	$: isAdmin = $user && $user.role === 'admin';
 
 	// Fetch approved media items
 	async function fetchMedia() {
@@ -104,6 +113,7 @@
 	onMount(() => {
 		console.log('Display component mounted');
 		fetchMedia();
+		hideIndicatorAfterDelay();
 
 		// Refresh the media list every 5 minutes
 		const mediaRefreshInterval = setInterval(
@@ -117,6 +127,9 @@
 		return () => {
 			clearInterval(mediaRefreshInterval);
 			if (refreshInterval) clearTimeout(refreshInterval);
+			if (indicatorTimeout) {
+				clearTimeout(indicatorTimeout);
+			}
 		};
 	});
 
@@ -151,35 +164,47 @@
 		}
 	}
 
-    // Add a debug flag
-    let showDebug = false;
-  
-    // Check if QR code exists for the current item
-    $: hasQRCode = currentItem && currentItem.qr_code && currentItem.qr_code.trim() !== '';
-    
-    // For debugging QR code
-    $: if (currentItem) {
-        console.log('Current item QR code:', currentItem.qr_code);
-    }
-  
-    // Toggle debug view with Ctrl+Alt+D
-    function handleKeydown(event) {
-        if (event.ctrlKey && event.altKey && event.key === 'd') {
-        showDebug = !showDebug;
-        }
-    }
+	// Add a debug flag
+	let showDebug = false;
 
-    onMount(() => {
-        // Add keydown listener for debug toggle
-        window.addEventListener('keydown', handleKeydown);
-        
-        // ...existing onMount code...
-        
-        return () => {
-        window.removeEventListener('keydown', handleKeydown);
-        // ...existing cleanup code...
-        };
-    });
+	// Check if QR code exists for the current item
+	$: hasQRCode = currentItem && currentItem.qr_code && currentItem.qr_code.trim() !== '';
+
+	// For debugging QR code
+	$: if (currentItem) {
+		console.log('Current item QR code:', currentItem.qr_code);
+	}
+
+	// Toggle debug view with Ctrl+Alt+D
+	function handleKeydown(event) {
+		if (event.ctrlKey && event.altKey && event.key === 'd') {
+			showDebug = !showDebug;
+		}
+	}
+
+	onMount(() => {
+		// Add keydown listener for debug toggle
+		window.addEventListener('keydown', handleKeydown);
+
+		// ...existing onMount code...
+
+		return () => {
+			window.removeEventListener('keydown', handleKeydown);
+			// ...existing cleanup code...
+		};
+	});
+
+	function hideIndicatorAfterDelay() {
+		if (indicatorTimeout) {
+			clearTimeout(indicatorTimeout);
+		}
+
+		showIndicator = true;
+
+		indicatorTimeout = setTimeout(() => {
+			showIndicator = false;
+		}, 5000);
+	}
 </script>
 
 <svelte:head>
@@ -187,7 +212,20 @@
 </svelte:head>
 
 <div class="display-container">
-    <Debug item={currentItem} visible={showDebug} />
+	{#if showIndicator}
+		<div
+			class="mode-indicator"
+			on:click={() => (showIndicator = true)}
+			on:mouseenter={() => (showIndicator = true)}
+		>
+			<div class="mode-label">
+				<span>INDIVIDUAL VIEW</span>
+			</div>
+			<a href="/display/live" class="mode-toggle">Switch to Live Mode</a>
+		</div>
+	{/if}
+	<DisplayModeIndicator mode="individual" {isAdmin} />
+	<Debug item={currentItem} visible={showDebug} />
 
 	{#if loading}
 		<div class="loading">
@@ -240,42 +278,42 @@
 				{/if}
 
 				<div class="media-info" class:hidden={currentItem.metadata?.hide_info}>
-                    <div class="info-content">
-                        <!-- Profile image section -->
-                        <div class="profile-section">
-                            {#if currentItem.profile_image}
-                                <div class="profile-image">
-                                    <img src={currentItem.profile_image} alt="Profile" />
-                                </div>
-                            {:else}
-                                <div class="profile-placeholder"></div>
-                            {/if}
-                        </div>
+					<div class="info-content">
+						<!-- Profile image section -->
+						<div class="profile-section">
+							{#if currentItem.profile_image}
+								<div class="profile-image">
+									<img src={currentItem.profile_image} alt="Profile" />
+								</div>
+							{:else}
+								<div class="profile-placeholder"></div>
+							{/if}
+						</div>
 
-                        <!-- Text content section -->
-                        <div class="text-section">
-                            {#if !currentItem.metadata?.hide_title}
-                                <h2 class="title">{currentItem.title || 'Untitled'}</h2>
-                            {/if}
+						<!-- Text content section -->
+						<div class="text-section">
+							{#if !currentItem.metadata?.hide_title}
+								<h2 class="title">{currentItem.title || 'Untitled'}</h2>
+							{/if}
 
-                            {#if currentItem.description && !currentItem.metadata?.hide_description}
-                                <p class="description">{currentItem.description}</p>
-                            {/if}
+							{#if currentItem.description && !currentItem.metadata?.hide_description}
+								<p class="description">{currentItem.description}</p>
+							{/if}
 
-                            {#if !currentItem.metadata?.hide_creator}
-                                <p class="creator">
-                                    Created by: {currentItem.full_name || currentItem.uploaded_by || 'Unknown'}
-                                </p>
-                            {/if}
-                        </div>
+							{#if !currentItem.metadata?.hide_creator}
+								<p class="creator">
+									Created by: {currentItem.full_name || currentItem.uploaded_by || 'Unknown'}
+								</p>
+							{/if}
+						</div>
 
-                        <!-- QR code section - only shown if one exists -->
-                        {#if hasQRCode}
-                            <div class="qr-code-section">
-                                <img src={currentItem.qr_code} alt="QR Code" class="qr-code" />
-                            </div>
-                        {/if}
-                    </div>
+						<!-- QR code section - only shown if one exists -->
+						{#if hasQRCode}
+							<div class="qr-code-section">
+								<img src={currentItem.qr_code} alt="QR Code" class="qr-code" />
+							</div>
+						{/if}
+					</div>
 				</div>
 			{/if}
 		</div>
@@ -333,89 +371,87 @@
 		left: 0;
 		background-color: rgba(0, 0, 0, 0.7);
 		box-sizing: border-box;
-        width: auto;
-        max-width: min(650px, 65%); /* Cap the width to prevent stretching */
-        border-top-right-radius: 8px;
-        /* Ensure flush left */
-        margin-left: 0;
-        padding-left: 0;
+		width: auto;
+		max-width: min(650px, 65%);
+		border-top-right-radius: 8px;
 	}
-    
-    .info-content {
-        display: flex;
-        align-items: center;
-        padding: 16px;
-    }
 
-    /* Profile image section */
-    .profile-section {
-        margin-right: 20px;
-        flex-shrink: 0; /* Prevent profile from shrinking */
-    }
-    
-    .profile-image, .profile-placeholder {
-        width: 60px;
-        height: 60px;
-        border-radius: 50%;
-        overflow: hidden;
-        border: 2px solid rgba(255, 255, 255, 0.5);
-        background-color: #333;
-    }
-    
-    .profile-image img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-    }
-    
-    /* Text content section */
-    .text-section {
-        flex: 1;
-        margin-right: 20px;
-        min-width: 0; /* This is important for proper text truncation */
-        max-width: 100%; /* Ensure text section doesn't grow too wide */
-    }
-    
-    .title {
-        font-size: 1.5rem;
-        font-weight: 600;
-        margin: 0 0 6px 0;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    
-    .description {
-        font-size: 1rem;
-        margin: 0 0 6px 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-        opacity: 0.9;
-    }
-    
-    .creator {
-        font-size: 0.9rem;
-        margin: 0;
-        opacity: 0.7;
-    }
-    
-    /* QR code section */
-    .qr-code-section {
-        border-left: 1px solid rgba(255, 255, 255, 0.3);
-        padding-left: 20px;
-        flex-shrink: 0; /* Prevent QR code from shrinking */
-    }
-    
-    .qr-code {
-        width: 80px;
-        height: 80px;
-        background-color: #fff;
-        padding: 4px;
-        border-radius: 4px;
-    }
+	.info-content {
+		display: flex;
+		align-items: center;
+		padding: 16px;
+	}
+
+	/* Profile image section */
+	.profile-section {
+		margin-right: 20px;
+		flex-shrink: 0;
+	}
+
+	.profile-image,
+	.profile-placeholder {
+		width: 60px;
+		height: 60px;
+		border-radius: 50%;
+		overflow: hidden;
+		border: 2px solid rgba(255, 255, 255, 0.5);
+		background-color: #333;
+	}
+
+	.profile-image img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+	}
+
+	/* Text content section */
+	.text-section {
+		flex: 1;
+		margin-right: 20px;
+		min-width: 0;
+		max-width: 100%;
+	}
+
+	.title {
+		font-size: 1.5rem;
+		font-weight: 600;
+		margin: 0 0 6px 0;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.description {
+		font-size: 1rem;
+		margin: 0 0 6px 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		-webkit-box-orient: vertical;
+		opacity: 0.9;
+	}
+
+	.creator {
+		font-size: 0.9rem;
+		margin: 0;
+		opacity: 0.7;
+	}
+
+	/* QR code section */
+	.qr-code-section {
+		border-left: 1px solid rgba(255, 255, 255, 0.3);
+		padding-left: 20px;
+		flex-shrink: 0;
+	}
+
+	.qr-code {
+		width: 80px;
+		height: 80px;
+		background-color: #fff;
+		padding: 4px;
+		border-radius: 4px;
+	}
 
 	.video-element {
 		width: 100vw;
@@ -467,41 +503,82 @@
 		background-color: rgba(255, 0, 0, 0.3);
 		border-radius: 8px;
 	}
-    
-    /* Media queries for responsive design */
-    /* Media queries for responsive design */
-    @media (max-width: 768px) {
-        .title {
-            font-size: 1.2rem;
-        }
-        
-        .description {
-            font-size: 0.9rem;
-        }
-        
-        .creator {
-            font-size: 0.8rem;
-        }
-        
-        .profile-image, .profile-placeholder {
-            width: 45px;
-            height: 45px;
-        }
-        
-        .qr-code {
-            width: 65px;
-            height: 65px;
-        }
-        
-        .media-info {
-            max-width: 90%;
-        }
-    }
-    
-    /* For wider screens, ensure the info box doesn't stretch too much */
-    @media (min-width: 1600px) {
-        .media-info {
-            max-width: 550px; /* Absolute max width for very large displays */
-        }
-    }
+
+	/* Media queries for responsive design */
+	@media (max-width: 768px) {
+		.title {
+			font-size: 1.2rem;
+		}
+
+		.description {
+			font-size: 0.9rem;
+		}
+
+		.creator {
+			font-size: 0.8rem;
+		}
+
+		.profile-image,
+		.profile-placeholder {
+			width: 45px;
+			height: 45px;
+		}
+
+		.qr-code {
+			width: 65px;
+			height: 65px;
+		}
+
+		.media-info {
+			max-width: 90%;
+		}
+	}
+
+	/* For wider screens, ensure the info box doesn't stretch too much */
+	@media (min-width: 1600px) {
+		.media-info {
+			max-width: 550px;
+		}
+	}
+
+	  /* Mode indicator styles */
+	  .mode-indicator {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    background-color: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 8px;
+    z-index: 1010;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-size: 14px;
+    backdrop-filter: blur(5px);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    transition: opacity 0.3s ease;
+  }
+  
+  .mode-label {
+    display: flex;
+    align-items: center;
+    font-weight: 600;
+    gap: 8px;
+  }
+  
+  .mode-toggle {
+    color: rgba(255, 255, 255, 0.7);
+    text-decoration: none;
+    font-size: 12px;
+    text-align: center;
+    padding: 4px;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+  }
+  
+  .mode-toggle:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+    color: white;
+  }
 </style>

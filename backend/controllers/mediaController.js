@@ -2,6 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const { db } = require('../db/database');
+const displayState = require('../services/displayState');
 
 // Get settings from database
 const getSettings = () => {
@@ -539,6 +540,118 @@ const updateMedia = async (req, res) => {
   }
 };
 
+/**
+ * Get the current global display state for live mode
+ */
+const getDisplayState = async (req, res) => {
+  try {
+    const state = displayState.getState();
+    
+    return res.json({
+      success: true,
+      data: { state }
+    });
+  } catch (error) {
+    console.error('Get display state error:', error);
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Internal server error' 
+    });
+  }
+};
+
+/**
+ * Update the global display state with new media
+ * Only admins can update the global state
+ */
+const updateDisplayMedia = async (req, res) => {
+  console.log('UPDATE DISPLAY MEDIA called by user:', req.user.username, 'role:', req.user.role);
+  
+  // Only admins can update display state
+  if (req.user.role !== 'admin') {
+    console.log('Non-admin attempted to update display state:', req.user.username, req.user.role);
+    return res.status(403).json({ 
+      success: false, 
+      message: 'Only administrators can control the live display' 
+    });
+  }
+  
+  try {
+    const { mediaId, index } = req.body;
+    
+    console.log('Received update request with params:', { mediaId, index });
+    
+    if (mediaId === undefined || index === undefined) {
+      console.log('Missing required parameters');
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required parameters: mediaId, index'
+      });
+    }
+    
+    // Pass the user ID to track who made the change
+    const state = displayState.updateMedia(mediaId, index, req.user.id);
+    
+    console.log('Updated state:', state);
+    
+    return res.json({
+      success: true,
+      data: { state }
+    });
+  } catch (error) {
+    console.error('Update display media error:', error);
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Internal server error' 
+    });
+  }
+};
+
+/**
+ * Update video playback state
+ * Only admins can update the video state
+ */
+const updateVideoState = async (req, res) => {
+  // Only admins can update video state
+  if (req.user.role !== 'admin') {
+    console.log('Non-admin attempted to update video state:', req.user.username, req.user.role);
+    return res.status(403).json({ 
+      success: false, 
+      message: 'Only administrators can control the live display' 
+    });
+  }
+  
+  try {
+    const { isPlaying, currentTime, duration } = req.body;
+    
+    if (isPlaying === undefined || currentTime === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required parameters: isPlaying, currentTime'
+      });
+    }
+    
+    // Pass the user ID to track who made the change
+    const state = displayState.updateVideoState(
+      isPlaying, 
+      currentTime, 
+      duration || 0, 
+      req.user.id
+    );
+    
+    return res.json({
+      success: true,
+      data: { state }
+    });
+  } catch (error) {
+    console.error('Update video state error:', error);
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Internal server error' 
+    });
+  }
+};
+
 module.exports = {
   uploadMedia,
   getApprovedMedia,
@@ -549,5 +662,8 @@ module.exports = {
   updateMedia,
   updateMediaOrder,
   uploadMediaQRCode,
-  deleteMediaQRCode
+  deleteMediaQRCode,
+  getDisplayState,
+  updateDisplayMedia,
+  updateVideoState
 };
