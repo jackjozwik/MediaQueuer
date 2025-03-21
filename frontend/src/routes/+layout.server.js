@@ -6,8 +6,8 @@ export function load({ url }) {
   // Current path
   const path = url.pathname;
   
-  // Check if current path is a public route
-  const isPublicRoute = publicRoutes.some(route => path === route);
+  // Check if current path is a public route or a subdirectory of /display
+  const isPublicRoute = publicRoutes.some(route => path === route) || path.startsWith('/display/');
   
   return {
     isPublicRoute,

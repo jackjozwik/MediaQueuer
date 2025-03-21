@@ -320,6 +320,10 @@
 	{/if}
 </div>
 
+<a href="/display/sync" class="mode-switch-button">
+  Switch to Synchronized Mode
+</a>
+
 <style>
 	.display-container {
 		position: fixed;
@@ -503,82 +507,54 @@
 		background-color: rgba(255, 0, 0, 0.3);
 		border-radius: 8px;
 	}
+    
+    /* Media queries for responsive design */
+    /* Media queries for responsive design */
+    @media (max-width: 768px) {
+        .title {
+            font-size: 1.2rem;
+        }
+        
+        .description {
+            font-size: 0.9rem;
+        }
+        
+        .creator {
+            font-size: 0.8rem;
+        }
+        
+        .profile-image, .profile-placeholder {
+            width: 45px;
+            height: 45px;
+        }
+        
+        .qr-code {
+            width: 65px;
+            height: 65px;
+        }
+        
+        .media-info {
+            max-width: 90%;
+        }
+    }
+    
+    /* For wider screens, ensure the info box doesn't stretch too much */
+    @media (min-width: 1600px) {
+        .media-info {
+            max-width: 550px; /* Absolute max width for very large displays */
+        }
+    }
 
-	/* Media queries for responsive design */
-	@media (max-width: 768px) {
-		.title {
-			font-size: 1.2rem;
-		}
-
-		.description {
-			font-size: 0.9rem;
-		}
-
-		.creator {
-			font-size: 0.8rem;
-		}
-
-		.profile-image,
-		.profile-placeholder {
-			width: 45px;
-			height: 45px;
-		}
-
-		.qr-code {
-			width: 65px;
-			height: 65px;
-		}
-
-		.media-info {
-			max-width: 90%;
-		}
-	}
-
-	/* For wider screens, ensure the info box doesn't stretch too much */
-	@media (min-width: 1600px) {
-		.media-info {
-			max-width: 550px;
-		}
-	}
-
-	  /* Mode indicator styles */
-	  .mode-indicator {
-    position: fixed;
-    top: 10px;
-    right: 10px;
-    background-color: rgba(0, 0, 0, 0.7);
-    color: white;
-    padding: 8px 12px;
-    border-radius: 8px;
-    z-index: 1010;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    font-size: 14px;
-    backdrop-filter: blur(5px);
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
-    transition: opacity 0.3s ease;
-  }
-  
-  .mode-label {
-    display: flex;
-    align-items: center;
-    font-weight: 600;
-    gap: 8px;
-  }
-  
-  .mode-toggle {
-    color: rgba(255, 255, 255, 0.7);
-    text-decoration: none;
-    font-size: 12px;
-    text-align: center;
-    padding: 4px;
-    border-radius: 4px;
-    transition: all 0.2s ease;
-  }
-  
-  .mode-toggle:hover {
-    background-color: rgba(255, 255, 255, 0.2);
-    color: white;
-  }
+    .mode-switch-button {
+        position: fixed;
+        top: 10px;
+        right: 10px;
+        background-color: rgba(0, 0, 0, 0.7);
+        color: white;
+        padding: 8px 12px;
+        border-radius: 4px;
+        text-decoration: none;
+        font-size: 14px;
+        z-index: 1000;
+    }
 </style>

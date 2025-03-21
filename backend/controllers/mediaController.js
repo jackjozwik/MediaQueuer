@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { db } = require('../db/database');
 const displayState = require('../services/displayState');
+// const QRCode = require('qrcode');
 
 // Get settings from database
 const getSettings = () => {
@@ -350,7 +351,13 @@ const approveMedia = async (req, res) => {
         message: 'Media not found or already processed'
       });
     }
-
+    
+    // Clear the display state media cache so the new item appears
+    if (displayState && typeof displayState.clearMediaCache === 'function') {
+      displayState.clearMediaCache();
+      console.log('Media cache cleared after approval');
+    }
+    
     return res.json({
       success: true,
       message: 'Media approved successfully'
@@ -432,7 +439,13 @@ const deleteMedia = async (req, res) => {
         console.error('Error deleting file:', err);
       }
     });
-
+    
+    // Clear the display state media cache
+    if (displayState && typeof displayState.clearMediaCache === 'function') {
+      displayState.clearMediaCache();
+      console.log('Media cache cleared after deletion');
+    }
+    
     return res.json({
       success: true,
       message: 'Media deleted successfully'
@@ -474,7 +487,13 @@ const updateMediaOrder = async (req, res) => {
 
     // Commit transaction
     db.prepare('COMMIT').run();
-
+    
+    // Clear the media cache since display order has changed
+    if (displayState && typeof displayState.clearMediaCache === 'function') {
+      displayState.clearMediaCache();
+      console.log('Media cache cleared after order update');
+    }
+    
     return res.json({
       success: true,
       message: 'Display order updated successfully'
@@ -543,7 +562,13 @@ const updateMedia = async (req, res) => {
         message: 'Media not found'
       });
     }
-
+    
+    // Clear the media cache if we updated duration or other display-related fields
+    if (displayState && typeof displayState.clearMediaCache === 'function') {
+      displayState.clearMediaCache();
+      console.log('Media cache cleared after update');
+    }
+    
     return res.json({
       success: true,
       message: 'Media updated successfully'
@@ -558,134 +583,151 @@ const updateMedia = async (req, res) => {
 };
 
 /**
- * Get the current global display state for live mode
+ * Get synchronized display state with timing information
  */
-const getDisplayState = async (req, res) => {
+const getSyncDisplayState = async (req, res) => {
   try {
-    // Get current state
-    const state = displayState.getState();
+    // Get current display state
+    const state = displayState.getSyncDisplayState();
     
-    // Get all approved media
-    const media = db.prepare(`
-      SELECT 
-        m.id, m.title, m.description, m.file_path, m.file_type, 
-        m.duration, m.display_order, m.qr_code, 
-        u.username as uploaded_by, 
-        u.first_name, u.last_name, u.preferred_name
-      FROM media m
-      JOIN users u ON m.user_id = u.id
-      WHERE m.status = 'approved'
-      ORDER BY 
-        CASE WHEN m.display_order IS NULL THEN 1 ELSE 0 END, 
-        m.display_order ASC,
-        m.approved_at DESC
-    `).all();
-
-    // Transform file paths to URLs
-    const mediaWithUrls = media.map(item => ({
-      ...item,
-      file_url: `/uploads/${path.basename(item.file_path)}`,
-      metadata: item.metadata ? JSON.parse(item.metadata) : {}
-    }));
+    // Get approved media items
+    const mediaItems = displayState.getSyncMediaItems();
     
-    // Cache media items for auto-advancement
-    displayState.cacheMediaItems(mediaWithUrls);
-
-    // If we have media but no current media selected, initialize with first item
-    if (mediaWithUrls.length > 0 && !state.currentMediaId) {
-      const initialItem = mediaWithUrls[0];
-      console.log(`Initializing display state with first media: ${initialItem.id}`);
-      displayState.updateMedia(initialItem.id, 0, 'system-init');
-    }
+    // Calculate time information
+    const now = Date.now();
+    const elapsedTime = (now - state.startTimestamp) / 1000; // seconds
+    
+    // Prepare time info
+    const timeInfo = {
+      serverTime: now,
+      elapsedTime
+    };
     
     return res.json({
       success: true,
-      data: { 
-        state: displayState.getState(),
-        media: mediaWithUrls 
+      data: {
+        state,
+        media: mediaItems,
+        timeInfo
       }
     });
   } catch (error) {
-    console.error('Error getting display state:', error);
+    console.error('Error getting sync display state:', error);
     return res.status(500).json({
       success: false,
-      message: 'Internal server error'
+      message: 'Error getting sync display state'
     });
   }
 };
 
 /**
- * Update the global display state with new media
- * Only admins can update the global state
+ * Update video duration
  */
-const updateDisplayMedia = async (req, res) => {
+const updateVideoDuration = async (req, res) => {
   try {
-    const { index, mediaId } = req.body;
+    const { mediaId, duration } = req.body;
     
-    if (typeof index !== 'number' || !mediaId) {
+    if (!mediaId || !duration) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid request parameters'
+        message: 'Media ID and duration are required'
       });
     }
-
-    // Update display state
-    const state = displayState.updateMedia(mediaId, index, req.user.id);
-
+    
+    // Update duration in database and cache
+    displayState.updateMediaDuration(mediaId, duration);
+    
     return res.json({
       success: true,
-      data: { state }
+      message: 'Video duration updated'
     });
   } catch (error) {
-    console.error('Error updating display media:', error);
+    console.error('Error updating video duration:', error);
     return res.status(500).json({
       success: false,
-      message: 'Internal server error'
+      message: 'Error updating video duration'
     });
   }
 };
 
 /**
- * Update video playback state
- * Only admins can update the video state
+ * Advance to the next media item
  */
-const updateVideoState = async (req, res) => {
-  // Only admins can update video state
-  if (req.user.role !== 'admin') {
-    console.log('Non-admin attempted to update video state:', req.user.username, req.user.role);
-    return res.status(403).json({
-      success: false,
-      message: 'Only administrators can control the live display'
-    });
-  }
-
+const advanceMedia = async (req, res) => {
   try {
-    const { isPlaying, currentTime, duration } = req.body;
-
-    if (isPlaying === undefined || currentTime === undefined) {
-      return res.status(400).json({
-        success: false,
-        message: 'Missing required parameters: isPlaying, currentTime'
-      });
-    }
-
-    // Pass the user ID to track who made the change
-    const state = displayState.updateVideoState(
-      isPlaying,
-      currentTime,
-      duration || 0,
-      req.user.id
-    );
-
+    const newState = displayState.advanceMedia();
+    
     return res.json({
       success: true,
-      data: { state }
+      message: 'Advanced to next media',
+      data: { state: newState }
     });
   } catch (error) {
-    console.error('Update video state error:', error);
+    console.error('Error advancing media:', error);
     return res.status(500).json({
       success: false,
-      message: 'Internal server error'
+      message: 'Error advancing media'
+    });
+  }
+};
+
+/**
+ * Reset the timeline (admin only)
+ */
+const resetTimeline = async (req, res) => {
+  try {
+    // Check if user is admin or faculty
+    if (!req.user || (req.user.role !== 'admin' && req.user.role !== 'faculty')) {
+      return res.status(403).json({ success: false, message: 'Unauthorized access' });
+    }
+    
+    const newState = displayState.resetTimeline();
+    
+    return res.json({
+      success: true,
+      message: 'Timeline reset successfully',
+      data: { state: newState }
+    });
+  } catch (error) {
+    console.error('Error resetting timeline:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error resetting timeline'
+    });
+  }
+};
+
+/**
+ * Skip to specific media (admin only)
+ */
+const skipToMedia = async (req, res) => {
+  try {
+    // Check if user is admin or faculty
+    if (!req.user || (req.user.role !== 'admin' && req.user.role !== 'faculty')) {
+      return res.status(403).json({ success: false, message: 'Unauthorized access' });
+    }
+    
+    const { index } = req.body;
+    
+    if (index === undefined || index < 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid media index is required'
+      });
+    }
+    
+    const newState = displayState.skipToMedia(parseInt(index));
+    
+    return res.json({
+      success: true,
+      message: 'Skipped to media successfully',
+      data: { state: newState }
+    });
+  } catch (error) {
+    console.error('Error skipping to media:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error skipping to media'
     });
   }
 };
@@ -701,7 +743,8 @@ module.exports = {
   updateMediaOrder,
   uploadMediaQRCode,
   deleteMediaQRCode,
-  getDisplayState,
-  updateDisplayMedia,
-  updateVideoState
+  getSyncDisplayState,   // New endpoint for sync mode
+  updateVideoDuration,   // Update video duration
+  resetTimeline,         // Reset timeline to start
+  skipToMedia            // Skip to specific media
 };

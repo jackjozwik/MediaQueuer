@@ -1,273 +1,416 @@
 // services/displayState.js
-/**
- * A more reliable helper function to check if a video is at/near its end
- * @param {number} currentTime - Current playback position
- * @param {number} duration - Total video duration
- * @param {number} threshold - Threshold in seconds to consider "at the end" (default: 0.5)
- * @return {boolean} True if the video is at/near its end
- */
 
-// Initial state - this will be shared across all clients
-const state = {
-  currentIndex: 0,
-  currentMediaId: null,
-  lastChanged: Date.now(),
-  changedBy: 'system',
-  videoState: {
-    isPlaying: true,
-    currentTime: 0,
-    duration: 0,
-    lastUpdated: Date.now()
+// Backend service to manage synchronized display state
+const { db } = require('../db/database');
+const cache = require('../utils/cache');
+
+// Cache keys
+const SYNC_STATE_KEY = 'sync_display_state';
+const SYNC_MEDIA_KEY = 'sync_display_media';
+
+/**
+ * Default display state structure
+ */
+const defaultDisplayState = {
+  currentIndex: 0,            // Current media index
+  startTimestamp: Date.now(), // When the current item started
+  lastUpdateTime: Date.now(), // When state was last updated
+};
+
+// Virtual player state
+let virtualPlayerTimer = null;
+let periodicRefreshTimer = null;
+let lastMediaCount = 0;
+
+/**
+ * Initialize the sync display state
+ */
+function initSyncDisplayState() {
+  // Check if we already have a state in cache
+  const cachedState = cache.get(SYNC_STATE_KEY);
+  
+  if (!cachedState) {
+    console.log('[VIRTUAL PLAYER] Initializing sync display state');
+    cache.set(SYNC_STATE_KEY, defaultDisplayState);
   }
-};
-
-// Auto-advance timer
-let autoAdvanceTimer = null;
-let cachedMediaItems = [];
+  
+  // Get initial media count
+  const mediaItems = getSyncMediaItems();
+  lastMediaCount = mediaItems.length;
+  
+  // Start the periodic refresh
+  startPeriodicRefresh();
+  
+  // Start the virtual player
+  startVirtualPlayer();
+  
+  return cachedState || defaultDisplayState;
+}
 
 /**
- * Get current display state
+ * Get the current synchronized display state
+ * @returns {Object} Current display state
  */
-const getState = () => {
-  // Return a copy of the state to avoid direct mutation
-  return { ...state };
-};
+function getSyncDisplayState() {
+  const state = cache.get(SYNC_STATE_KEY) || defaultDisplayState;
+  return state;
+}
 
 /**
- * Cache the current media items for auto-advancement
+ * Get the approved media items for synchronization
+ * @returns {Array} Array of media items
  */
-const cacheMediaItems = (mediaItems) => {
-  if (Array.isArray(mediaItems) && mediaItems.length > 0) {
-    // Map any string IDs to numbers for consistency
-    cachedMediaItems = mediaItems.map(item => ({
-      ...item,
-      id: typeof item.id === 'string' ? parseInt(item.id, 10) : item.id
-    }));
+function getSyncMediaItems() {
+  try {
+    // First check cache
+    const cachedMedia = cache.get(SYNC_MEDIA_KEY);
     
-    console.log(`Cached ${cachedMediaItems.length} media items for auto-advancement`);
-    console.log('Media IDs:', cachedMediaItems.map(item => item.id).join(', '));
+    if (cachedMedia) {
+      return cachedMedia;
+    }
     
-    // If we have a current media ID but no timer, restart auto-advancement
-    if (state.currentMediaId && !autoAdvanceTimer) {
-      const currentItem = cachedMediaItems.find(item => 
-        item.id === state.currentMediaId || 
-        item.id === parseInt(state.currentMediaId, 10)
-      );
-      
-      if (currentItem) {
-        console.log(`Restarting auto-advance for current media: ${currentItem.id}`);
-        setupAutoAdvance(currentItem);
-      } else {
-        console.log(`Current media ID ${state.currentMediaId} not found in cached items`);
+    // If not in cache, get from database
+    const query = `
+      SELECT 
+        m.id, m.title, m.description, m.file_path, m.file_type, 
+        m.duration, m.display_order, m.created_at, m.approved_at, m.metadata,
+        m.qr_code, 
+        u.username as uploaded_by, 
+        u.first_name, u.last_name, u.preferred_name,
+        COALESCE(u.preferred_name, u.first_name) || ' ' || u.last_name as full_name
+      FROM media m
+      JOIN users u ON m.user_id = u.id
+      WHERE m.status = 'approved'
+      ORDER BY 
+        CASE WHEN m.display_order IS NULL THEN 1 ELSE 0 END, 
+        m.display_order ASC,
+        m.approved_at DESC
+    `;
+    
+    const rows = db.prepare(query).all();
+    
+    // Process URLs to ensure they're accessible
+    const mediaItems = rows.map(item => {
+      // Generate file URL from path
+      if (item.file_path) {
+        const filename = item.file_path.split('\\').pop().split('/').pop();
+        item.file_url = `/uploads/${filename}`;
       }
-    }
-  }
-};
-
-/**
- * Update state with new media item
- */
-const updateMedia = (mediaId, index, userId = 'unknown') => {
-  // Clear any existing auto-advance timer
-  if (autoAdvanceTimer) {
-    clearTimeout(autoAdvanceTimer);
-    autoAdvanceTimer = null;
-    console.log('Cleared existing auto-advance timer during updateMedia');
-  }
-  
-  // Update state
-  state.currentIndex = index;
-  state.currentMediaId = mediaId;
-  state.lastChanged = Date.now();
-  state.changedBy = userId;
-  
-  // Reset video state
-  state.videoState = {
-    isPlaying: true,
-    currentTime: 0,
-    duration: 0,
-    lastUpdated: Date.now()
-  };
-  
-  console.log(`Display state updated by ${userId} to index ${index}, media ${mediaId}`);
-  
-  // Try to setup auto-advance for the new media
-  if (cachedMediaItems.length > 0) {
-    const mediaItem = cachedMediaItems.find(item => item.id === parseInt(mediaId) || item.id === mediaId);
-    if (mediaItem) {
-      // Add slight delay before setting up auto-advance to avoid race conditions
-      setTimeout(() => {
-        setupAutoAdvance(mediaItem);
-      }, 100);
-    } else {
-      console.log(`Warning: Selected media ID ${mediaId} not found in cached items. Available IDs:`, 
-                  cachedMediaItems.map(item => item.id));
-    }
-  } else {
-    console.log('No cached media items available for auto-advancement');
-  }
-  
-  return getState();
-};
-
-/**
- * Update video playback state
- */
-const updateVideoState = (isPlaying, currentTime, duration, userId = 'unknown') => {
-  state.videoState = {
-    isPlaying,
-    currentTime,
-    duration,
-    lastUpdated: Date.now()
-  };
-  
-  console.log(`Video state updated by ${userId}: playing=${isPlaying}, time=${currentTime.toFixed(2)} / ${duration.toFixed(2)}`);
-  
-  // Check if video has ended and should auto-advance
-  if (isPlaying && isVideoAtEnd(currentTime, duration)) {
-    console.log(`Video end detected (${currentTime.toFixed(2)}/${duration.toFixed(2)}), triggering auto-advance`);
-    // Schedule auto-advance with a short delay to allow any final frames to play
-    setTimeout(() => triggerAutoAdvance(), 500);
-  }
-  
-  return getState();
-};
-
-/**
- * Set up auto-advance timer based on media type
- */
-const setupAutoAdvance = (mediaItem) => {
-  // Clear any existing timer
-  if (autoAdvanceTimer) {
-    clearTimeout(autoAdvanceTimer);
-    autoAdvanceTimer = null;
-    console.log('Cleared existing auto-advance timer');
-  }
-  
-  if (!mediaItem) {
-    console.log('Cannot setup auto-advance: no media item provided');
-    return false;
-  }
-  
-  console.log(`Setting up auto-advance for media ${mediaItem.id}, type ${mediaItem.file_type}`);
-  
-  // For images, use the duration for auto-advancement
-  if (mediaItem.file_type === 'image' || mediaItem.file_type.startsWith('image/')) {
-    // Get duration in milliseconds (default to 10 seconds if not specified)
-    const durationMs = mediaItem.duration ? parseInt(mediaItem.duration) * 1000 : 10000;
+      
+      // Generate QR code URL from path
+      if (item.qr_code && typeof item.qr_code === 'string') {
+        if (item.qr_code.includes('\\') || item.qr_code.includes('/')) {
+          const qrFilename = item.qr_code.split('\\').pop().split('/').pop();
+          item.qr_code = `/uploads/qrcodes/${qrFilename}`;
+        } else if (!item.qr_code.startsWith('/') && !item.qr_code.startsWith('http')) {
+          item.qr_code = `/uploads/qrcodes/${item.qr_code}`;
+        }
+      }
+      
+      // Parse metadata if it exists
+      if (item.metadata && typeof item.metadata === 'string') {
+        try {
+          item.metadata = JSON.parse(item.metadata);
+        } catch (e) {
+          console.error('Error parsing metadata:', e);
+          item.metadata = {};
+        }
+      }
+      
+      return item;
+    });
     
-    console.log(`Setting auto-advance timer for image: ${durationMs}ms`);
+    // Cache the media items
+    cache.set(SYNC_MEDIA_KEY, mediaItems, 60 * 5); // Cache for 5 minutes
     
-    autoAdvanceTimer = setTimeout(() => {
-      console.log(`Auto-advance timer fired for image ${mediaItem.id} after ${durationMs}ms`);
-      triggerAutoAdvance();
-    }, durationMs);
+    return mediaItems;
+  } catch (error) {
+    console.error('Error getting sync media items:', error);
+    return [];
+  }
+}
+
+/**
+ * Update the video duration for a media item
+ * @param {string} mediaId - The ID of the media item
+ * @param {number} duration - The duration in seconds
+ */
+function updateMediaDuration(mediaId, duration) {
+  try {
+    if (!mediaId || !duration) {
+      throw new Error('Media ID and duration are required');
+    }
+    
+    // Update in database
+    db.prepare(
+      'UPDATE media SET duration = ? WHERE id = ?'
+    ).run(duration, mediaId);
+    
+    // Update in cache if it exists
+    const cachedMedia = cache.get(SYNC_MEDIA_KEY);
+    if (cachedMedia) {
+      const updatedMedia = cachedMedia.map(item => {
+        if (item.id === mediaId) {
+          return { ...item, duration };
+        }
+        return item;
+      });
+      
+      cache.set(SYNC_MEDIA_KEY, updatedMedia, 60 * 5); // Cache for 5 minutes
+    }
     
     return true;
-  } 
-  // For videos, use the duration if available, otherwise wait for client feedback
-  else if (mediaItem.file_type === 'video' || mediaItem.file_type.startsWith('video/')) {
-    console.log(`Video media detected: ${mediaItem.id}`);
+  } catch (error) {
+    console.error('Error updating media duration:', error);
+    throw error;
+  }
+}
+
+/**
+ * Move to the next media item
+ */
+function advanceMedia() {
+  // Get the current state and media items
+  const state = getSyncDisplayState();
+  const mediaItems = getSyncMediaItems();
+  
+  if (!mediaItems || mediaItems.length === 0) {
+    return state;
+  }
+  
+  // Calculate the next index (with wrap-around)
+  const nextIndex = (state.currentIndex + 1) % mediaItems.length;
+  
+  // Update the state
+  const newState = {
+    ...state,
+    currentIndex: nextIndex,
+    startTimestamp: Date.now(),
+    lastUpdateTime: Date.now()
+  };
+  
+  // Save to cache
+  cache.set(SYNC_STATE_KEY, newState);
+  
+  // Log the transition
+  const currentItem = mediaItems[nextIndex];
+  console.log(`[VIRTUAL PLAYER] Now playing: ${currentItem.title} (${currentItem.file_type})`);
+
+  // Schedule the next item
+  scheduleNextItem(nextIndex);
+  
+  return newState;
+}
+
+/**
+ * Reset the timeline to start from the beginning
+ */
+function resetTimeline() {
+  stopVirtualPlayer();
+  
+  const newState = {
+    ...defaultDisplayState,
+    startTimestamp: Date.now(),
+    lastUpdateTime: Date.now(),
+  };
+  
+  cache.set(SYNC_STATE_KEY, newState);
+  
+  console.log('[VIRTUAL PLAYER] Timeline reset to beginning');
+  
+  // Restart the virtual player
+  startVirtualPlayer();
+  
+  return newState;
+}
+
+/**
+ * Skip to a specific media item
+ * @param {number} index - Index to skip to
+ */
+function skipToMedia(index) {
+  // Get media items to validate index
+  const mediaItems = getSyncMediaItems();
+  
+  if (!mediaItems || mediaItems.length === 0) {
+    return getSyncDisplayState();
+  }
+  
+  // Stop the current timer
+  stopVirtualPlayer();
+  
+  // Make sure index is valid
+  const validIndex = Math.max(0, Math.min(index, mediaItems.length - 1));
+  
+  // Update state
+  const newState = {
+    ...getSyncDisplayState(),
+    currentIndex: validIndex,
+    startTimestamp: Date.now(),
+    lastUpdateTime: Date.now()
+  };
+  
+  cache.set(SYNC_STATE_KEY, newState);
+  
+  // Log the skip
+  const currentItem = mediaItems[validIndex];
+  console.log(`[VIRTUAL PLAYER] Skipped to: ${currentItem.title} (${currentItem.file_type})`);
+  
+  // Schedule the next item
+  scheduleNextItem(validIndex);
+  
+  return newState;
+}
+
+/**
+ * Clear the media cache to force a refresh
+ */
+function clearMediaCache() {
+  cache.del(SYNC_MEDIA_KEY);
+  console.log('[VIRTUAL PLAYER] Media cache cleared');
+}
+
+/**
+ * Schedule the next item to play based on current item duration
+ */
+function scheduleNextItem(currentIndex) {
+  // Clear any existing timer
+  stopVirtualPlayer();
+  
+  const mediaItems = getSyncMediaItems();
+  if (!mediaItems || mediaItems.length === 0 || currentIndex >= mediaItems.length) {
+    return;
+  }
+  
+  const currentItem = mediaItems[currentIndex];
+  const duration = currentItem.duration ? 
+    parseInt(currentItem.duration) : 
+    (currentItem.file_type.startsWith('image') ? 10 : 30); // Default: 10s for images, 30s for videos
+  
+  console.log(`[VIRTUAL PLAYER] Playing "${currentItem.title}" for ${duration} seconds`);
+  
+  // Schedule the next advance
+  virtualPlayerTimer = setTimeout(() => {
+    console.log(`[VIRTUAL PLAYER] Item "${currentItem.title}" finished playing`);
+    advanceMedia();
+  }, duration * 1000);
+}
+
+/**
+ * Stop the virtual player timer
+ */
+function stopVirtualPlayer() {
+  if (virtualPlayerTimer) {
+    clearTimeout(virtualPlayerTimer);
+    virtualPlayerTimer = null;
+  }
+}
+
+/**
+ * Start the virtual player
+ */
+function startVirtualPlayer() {
+  console.log('[VIRTUAL PLAYER] Starting virtual player');
+  
+  // Initialize state if needed
+  const state = getSyncDisplayState();
+  const mediaItems = getSyncMediaItems();
+  
+  if (!mediaItems || mediaItems.length === 0) {
+    console.log('[VIRTUAL PLAYER] No media items available for playback');
+    return;
+  }
+  
+  // Log the current item
+  const currentItem = mediaItems[state.currentIndex];
+  console.log(`[VIRTUAL PLAYER] Starting with: ${currentItem.title} (${currentItem.file_type})`);
+  
+  // Schedule the next item
+  scheduleNextItem(state.currentIndex);
+}
+
+/**
+ * Check for changes in the media list
+ */
+function checkForMediaChanges() {
+  try {
+    // Check if cache exists first
+    const cachedMedia = cache.get(SYNC_MEDIA_KEY);
     
-    // If we have a duration, set a timer
-    if (mediaItem.duration) {
-      const durationMs = parseInt(mediaItem.duration) * 1000;
-      console.log(`Setting auto-advance timer for video with known duration: ${durationMs}ms`);
-      
-      autoAdvanceTimer = setTimeout(() => {
-        console.log(`Auto-advance timer fired for video ${mediaItem.id} after ${durationMs}ms`);
-        triggerAutoAdvance();
-      }, durationMs);
-      
-      return true;
-    } else {
-      console.log(`Video has no duration, waiting for end detection...`);
-      // Set a fallback timer for 10 minutes in case the video never ends or client doesn't report
-      const fallbackMs = 10 * 60 * 1000; // 10 minutes
-      
-      autoAdvanceTimer = setTimeout(() => {
-        console.log(`Fallback auto-advance for video ${mediaItem.id} after ${fallbackMs}ms`);
-        triggerAutoAdvance();
-      }, fallbackMs);
-      
-      return true;
+    if (!cachedMedia) {
+      // If no cache, get fresh media
+      getSyncMediaItems();
+      return;
     }
+    
+    // Count approved media in database
+    const countQuery = `
+      SELECT COUNT(*) as count 
+      FROM media 
+      WHERE status = 'approved'
+    `;
+    
+    const result = db.prepare(countQuery).get();
+    const currentMediaCount = result.count;
+    
+    // If count has changed, refresh the media
+    if (currentMediaCount !== lastMediaCount) {
+      console.log(`[VIRTUAL PLAYER] Media count changed from ${lastMediaCount} to ${currentMediaCount}, refreshing...`);
+      cache.del(SYNC_MEDIA_KEY);
+      const freshMedia = getSyncMediaItems();
+      lastMediaCount = currentMediaCount;
+      
+      // If playing an item beyond the new list, reset
+      const state = getSyncDisplayState();
+      if (state.currentIndex >= freshMedia.length) {
+        resetTimeline();
+      }
+    }
+  } catch (error) {
+    console.error('Error checking for media changes:', error);
   }
-  
-  console.log(`Unknown media type: ${mediaItem.file_type}`);
-  return false;
-};
+}
 
 /**
- * Trigger auto-advance to next media item
+ * Start periodic refresh to check for media changes
  */
-const triggerAutoAdvance = () => {
-  console.log('triggerAutoAdvance called, media items:', cachedMediaItems.length);
-  
-  if (cachedMediaItems.length <= 1) {
-    console.log('Cannot auto-advance: not enough media items');
-    return null;
+function startPeriodicRefresh() {
+  // Check every 30 seconds for changes
+  if (!periodicRefreshTimer) {
+    console.log('[VIRTUAL PLAYER] Starting periodic refresh');
+    periodicRefreshTimer = setInterval(checkForMediaChanges, 30000);
+    
+    // Initial check
+    checkForMediaChanges();
   }
-  
-  // Calculate next index
-  const nextIndex = (state.currentIndex + 1) % cachedMediaItems.length;
-  const nextMediaId = cachedMediaItems[nextIndex].id;
-  
-  console.log(`Auto-advancing from index ${state.currentIndex} to ${nextIndex} (media ID: ${nextMediaId})`);
-  
-  // Update state to next media
-  return updateMedia(nextMediaId, nextIndex, 'system-auto');
-};
+}
 
 /**
- * Check if video should auto-advance based on current time
+ * Stop periodic refresh
  */
-const checkVideoAutoAdvance = () => {
-  // If we're not showing a video, do nothing
-  if (!state.currentMediaId || !cachedMediaItems.length) return;
-  
-  const currentItem = cachedMediaItems.find(item => item.id === state.currentMediaId);
-  if (!currentItem || !currentItem.file_type.startsWith('video/')) return;
-  
-  const { isPlaying, currentTime, duration } = state.videoState;
-  
-  // If video is playing and at the end, trigger auto-advance
-  if (isPlaying && duration > 0 && Math.abs(currentTime - duration) < 0.5) {
-    console.log(`Video ended check: current=${currentTime.toFixed(2)}, duration=${duration.toFixed(2)}`);
-    triggerAutoAdvance();
+function stopPeriodicRefresh() {
+  if (periodicRefreshTimer) {
+    clearInterval(periodicRefreshTimer);
+    periodicRefreshTimer = null;
   }
-};
+}
 
-// Initialize
+// Make sure we clean up on module exit
+process.on('exit', () => {
+  stopVirtualPlayer();
+  stopPeriodicRefresh();
+});
+
+// Initialize on module load
+initSyncDisplayState();
 console.log('Display state service initialized');
 
-const isVideoAtEnd = (currentTime, duration, threshold = 0.5) => {
-  // Validate inputs to avoid false positives
-  if (!duration || duration <= 0 || !currentTime) return false;
-  
-  // Check if we're within threshold seconds of the end
-  const remainingTime = Math.max(0, duration - currentTime);
-  return remainingTime <= threshold || currentTime >= duration;
-};
-
-const getTimerStatus = () => {
-  return {
-    timerActive: !!autoAdvanceTimer,
-    currentState: {...state},
-    mediaItemsCount: cachedMediaItems.length,
-    currentMediaItem: cachedMediaItems.find(item => item.id === state.currentMediaId)
-  };
-};
-
 module.exports = {
-  getState,
-  updateMedia,
-  updateVideoState,
-  cacheMediaItems,
-  triggerAutoAdvance,
-  checkVideoAutoAdvance,
-  cacheMediaItems,
-  isVideoAtEnd,
-  setupAutoAdvance,
-  getTimerStatus
-};
+  getSyncDisplayState,
+  getSyncMediaItems,
+  updateMediaDuration,
+  advanceMedia,
+  resetTimeline,
+  skipToMedia,
+  clearMediaCache,
+}; 
