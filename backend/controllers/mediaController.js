@@ -335,6 +335,12 @@ const approveMedia = async (req, res) => {
       });
     }
     
+    // Clear the display state media cache so the new item appears
+    if (displayState && typeof displayState.clearMediaCache === 'function') {
+      displayState.clearMediaCache();
+      console.log('Media cache cleared after approval');
+    }
+    
     return res.json({
       success: true,
       message: 'Media approved successfully'
@@ -417,6 +423,12 @@ const deleteMedia = async (req, res) => {
       }
     });
     
+    // Clear the display state media cache
+    if (displayState && typeof displayState.clearMediaCache === 'function') {
+      displayState.clearMediaCache();
+      console.log('Media cache cleared after deletion');
+    }
+    
     return res.json({
       success: true,
       message: 'Media deleted successfully'
@@ -458,6 +470,12 @@ const updateMediaOrder = async (req, res) => {
     
     // Commit transaction
     db.prepare('COMMIT').run();
+    
+    // Clear the media cache since display order has changed
+    if (displayState && typeof displayState.clearMediaCache === 'function') {
+      displayState.clearMediaCache();
+      console.log('Media cache cleared after order update');
+    }
     
     return res.json({
       success: true,
@@ -526,6 +544,12 @@ const updateMedia = async (req, res) => {
         success: false, 
         message: 'Media not found' 
       });
+    }
+    
+    // Clear the media cache if we updated duration or other display-related fields
+    if (displayState && typeof displayState.clearMediaCache === 'function') {
+      displayState.clearMediaCache();
+      console.log('Media cache cleared after update');
     }
     
     return res.json({

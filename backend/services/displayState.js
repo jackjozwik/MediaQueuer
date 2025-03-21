@@ -19,6 +19,8 @@ const defaultDisplayState = {
 
 // Virtual player state
 let virtualPlayerTimer = null;
+let periodicRefreshTimer = null;
+let lastMediaCount = 0;
 
 /**
  * Initialize the sync display state
@@ -31,6 +33,13 @@ function initSyncDisplayState() {
     console.log('[VIRTUAL PLAYER] Initializing sync display state');
     cache.set(SYNC_STATE_KEY, defaultDisplayState);
   }
+  
+  // Get initial media count
+  const mediaItems = getSyncMediaItems();
+  lastMediaCount = mediaItems.length;
+  
+  // Start the periodic refresh
+  startPeriodicRefresh();
   
   // Start the virtual player
   startVirtualPlayer();
@@ -320,21 +329,77 @@ function startVirtualPlayer() {
   scheduleNextItem(state.currentIndex);
 }
 
-// Initialize state and start the virtual player
-function initSyncDisplayState() {
-  // Check if we already have a state in cache
-  const cachedState = cache.get(SYNC_STATE_KEY);
-  
-  if (!cachedState) {
-    console.log('[VIRTUAL PLAYER] Initializing sync display state');
-    cache.set(SYNC_STATE_KEY, defaultDisplayState);
+/**
+ * Check for changes in the media list
+ */
+function checkForMediaChanges() {
+  try {
+    // Check if cache exists first
+    const cachedMedia = cache.get(SYNC_MEDIA_KEY);
+    
+    if (!cachedMedia) {
+      // If no cache, get fresh media
+      getSyncMediaItems();
+      return;
+    }
+    
+    // Count approved media in database
+    const countQuery = `
+      SELECT COUNT(*) as count 
+      FROM media 
+      WHERE status = 'approved'
+    `;
+    
+    const result = db.prepare(countQuery).get();
+    const currentMediaCount = result.count;
+    
+    // If count has changed, refresh the media
+    if (currentMediaCount !== lastMediaCount) {
+      console.log(`[VIRTUAL PLAYER] Media count changed from ${lastMediaCount} to ${currentMediaCount}, refreshing...`);
+      cache.del(SYNC_MEDIA_KEY);
+      const freshMedia = getSyncMediaItems();
+      lastMediaCount = currentMediaCount;
+      
+      // If playing an item beyond the new list, reset
+      const state = getSyncDisplayState();
+      if (state.currentIndex >= freshMedia.length) {
+        resetTimeline();
+      }
+    }
+  } catch (error) {
+    console.error('Error checking for media changes:', error);
   }
-  
-  // Start the virtual player
-  startVirtualPlayer();
-  
-  return cachedState || defaultDisplayState;
 }
+
+/**
+ * Start periodic refresh to check for media changes
+ */
+function startPeriodicRefresh() {
+  // Check every 30 seconds for changes
+  if (!periodicRefreshTimer) {
+    console.log('[VIRTUAL PLAYER] Starting periodic refresh');
+    periodicRefreshTimer = setInterval(checkForMediaChanges, 30000);
+    
+    // Initial check
+    checkForMediaChanges();
+  }
+}
+
+/**
+ * Stop periodic refresh
+ */
+function stopPeriodicRefresh() {
+  if (periodicRefreshTimer) {
+    clearInterval(periodicRefreshTimer);
+    periodicRefreshTimer = null;
+  }
+}
+
+// Make sure we clean up on module exit
+process.on('exit', () => {
+  stopVirtualPlayer();
+  stopPeriodicRefresh();
+});
 
 // Initialize on module load
 initSyncDisplayState();

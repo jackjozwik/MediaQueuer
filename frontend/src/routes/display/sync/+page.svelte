@@ -169,7 +169,44 @@
       setupImageTimer();
     }
     
+    // Set up periodic refresh to check for new content
+    const refreshInterval = setInterval(async () => {
+      try {
+        // Only refresh if we're not in the middle of a transition
+        if (!loading) {
+          console.log('Checking for new content...');
+          const response = await fetch('/api/media/sync-state');
+          const result = await response.json();
+          
+          if (result.success && result.data) {
+            // Check if the media list has changed
+            if (JSON.stringify(mediaItems.map(item => item.id)) !== 
+                JSON.stringify(result.data.media.map(item => item.id))) {
+              console.log('Media list has changed, updating...');
+              
+              // Save current position
+              const currentId = mediaItems[currentIndex]?.id;
+              
+              // Update the list
+              mediaItems = result.data.media;
+              
+              // Try to find the same item in the new list
+              if (currentId) {
+                const newIndex = mediaItems.findIndex(item => item.id === currentId);
+                if (newIndex !== -1) {
+                  currentIndex = newIndex;
+                }
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error refreshing content:', error);
+      }
+    }, 60000); // Check every minute
+    
     return () => {
+      clearInterval(refreshInterval);
       document.removeEventListener('click', enableAudio);
       document.removeEventListener('keydown', enableAudio);
     };
