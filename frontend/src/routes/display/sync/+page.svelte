@@ -219,6 +219,12 @@
       padding: 0;
       overflow: hidden;
       background-color: black;
+      color: white;
+    }
+    
+    html, body {
+      height: 100%;
+      width: 100%;
     }
   </style>
 </svelte:head>

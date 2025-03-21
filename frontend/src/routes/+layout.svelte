@@ -25,7 +25,7 @@
     $: currentPath = $page.url.pathname;
     
     // Determine if the current route is public
-    $: isPublicRoute = ['/', '/register', '/display'].includes(currentPath);
+    $: isPublicRoute = ['/', '/register', '/display'].includes(currentPath) || currentPath.startsWith('/display/');
     
     // Redirect if not authenticated and not on a public route
     $: {
