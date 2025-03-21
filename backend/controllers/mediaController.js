@@ -2,6 +2,8 @@
 const fs = require('fs');
 const path = require('path');
 const { db } = require('../db/database');
+const displayState = require('../services/displayState');
+// const QRCode = require('qrcode');
 
 // Get settings from database
 const getSettings = () => {
@@ -539,6 +541,156 @@ const updateMedia = async (req, res) => {
   }
 };
 
+/**
+ * Get synchronized display state with timing information
+ */
+const getSyncDisplayState = async (req, res) => {
+  try {
+    // Get current display state
+    const state = displayState.getSyncDisplayState();
+    
+    // Get approved media items
+    const mediaItems = displayState.getSyncMediaItems();
+    
+    // Calculate time information
+    const now = Date.now();
+    const elapsedTime = (now - state.startTimestamp) / 1000; // seconds
+    
+    // Prepare time info
+    const timeInfo = {
+      serverTime: now,
+      elapsedTime
+    };
+    
+    return res.json({
+      success: true,
+      data: {
+        state,
+        media: mediaItems,
+        timeInfo
+      }
+    });
+  } catch (error) {
+    console.error('Error getting sync display state:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error getting sync display state'
+    });
+  }
+};
+
+/**
+ * Update video duration
+ */
+const updateVideoDuration = async (req, res) => {
+  try {
+    const { mediaId, duration } = req.body;
+    
+    if (!mediaId || !duration) {
+      return res.status(400).json({
+        success: false,
+        message: 'Media ID and duration are required'
+      });
+    }
+    
+    // Update duration in database and cache
+    displayState.updateMediaDuration(mediaId, duration);
+    
+    return res.json({
+      success: true,
+      message: 'Video duration updated'
+    });
+  } catch (error) {
+    console.error('Error updating video duration:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error updating video duration'
+    });
+  }
+};
+
+/**
+ * Advance to the next media item
+ */
+const advanceMedia = async (req, res) => {
+  try {
+    const newState = displayState.advanceMedia();
+    
+    return res.json({
+      success: true,
+      message: 'Advanced to next media',
+      data: { state: newState }
+    });
+  } catch (error) {
+    console.error('Error advancing media:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error advancing media'
+    });
+  }
+};
+
+/**
+ * Reset the timeline (admin only)
+ */
+const resetTimeline = async (req, res) => {
+  try {
+    // Check if user is admin or faculty
+    if (!req.user || (req.user.role !== 'admin' && req.user.role !== 'faculty')) {
+      return res.status(403).json({ success: false, message: 'Unauthorized access' });
+    }
+    
+    const newState = displayState.resetTimeline();
+    
+    return res.json({
+      success: true,
+      message: 'Timeline reset successfully',
+      data: { state: newState }
+    });
+  } catch (error) {
+    console.error('Error resetting timeline:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error resetting timeline'
+    });
+  }
+};
+
+/**
+ * Skip to specific media (admin only)
+ */
+const skipToMedia = async (req, res) => {
+  try {
+    // Check if user is admin or faculty
+    if (!req.user || (req.user.role !== 'admin' && req.user.role !== 'faculty')) {
+      return res.status(403).json({ success: false, message: 'Unauthorized access' });
+    }
+    
+    const { index } = req.body;
+    
+    if (index === undefined || index < 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid media index is required'
+      });
+    }
+    
+    const newState = displayState.skipToMedia(parseInt(index));
+    
+    return res.json({
+      success: true,
+      message: 'Skipped to media successfully',
+      data: { state: newState }
+    });
+  } catch (error) {
+    console.error('Error skipping to media:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error skipping to media'
+    });
+  }
+};
+
 module.exports = {
   uploadMedia,
   getApprovedMedia,
@@ -549,5 +701,9 @@ module.exports = {
   updateMedia,
   updateMediaOrder,
   uploadMediaQRCode,
-  deleteMediaQRCode
+  deleteMediaQRCode,
+  getSyncDisplayState,   // New endpoint for sync mode
+  updateVideoDuration,   // Update video duration
+  resetTimeline,         // Reset timeline to start
+  skipToMedia            // Skip to specific media
 };

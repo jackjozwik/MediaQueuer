@@ -282,6 +282,10 @@
 	{/if}
 </div>
 
+<a href="/display/sync" class="mode-switch-button">
+  Switch to Synchronized Mode
+</a>
+
 <style>
 	.display-container {
 		position: fixed;
@@ -503,5 +507,18 @@
         .media-info {
             max-width: 550px; /* Absolute max width for very large displays */
         }
+    }
+
+    .mode-switch-button {
+        position: fixed;
+        top: 10px;
+        right: 10px;
+        background-color: rgba(0, 0, 0, 0.7);
+        color: white;
+        padding: 8px 12px;
+        border-radius: 4px;
+        text-decoration: none;
+        font-size: 14px;
+        z-index: 1000;
     }
 </style>

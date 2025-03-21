@@ -77,4 +77,12 @@ router.delete(
   mediaController.deleteMediaQRCode
 );
 
+// Sync display routes
+router.get('/sync-state', mediaController.getSyncDisplayState);
+router.post('/update-duration', mediaController.updateVideoDuration);
+
+// Admin-only sync controls
+router.post('/reset-timeline', verifyToken, isFacultyOrAdmin, mediaController.resetTimeline);
+router.post('/skip-to-media', verifyToken, isFacultyOrAdmin, mediaController.skipToMedia);
+
 module.exports = router;
