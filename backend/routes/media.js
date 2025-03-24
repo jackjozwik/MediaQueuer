@@ -85,4 +85,18 @@ router.post('/update-duration', mediaController.updateVideoDuration);
 router.post('/reset-timeline', verifyToken, isFacultyOrAdmin, mediaController.resetTimeline);
 router.post('/skip-to-media', verifyToken, isFacultyOrAdmin, mediaController.skipToMedia);
 
+// Get archived media
+router.get('/archived', verifyToken, isAdmin, mediaController.getArchivedMedia);
+
+// Archive a media item
+router.post('/archive/:id', verifyToken, isAdmin, mediaController.archiveMedia);
+
+// Restore an archived media item
+router.post('/restore/:id', verifyToken, isAdmin, mediaController.restoreMedia);
+
+// User uploads management
+router.get('/user-uploads', verifyToken, mediaController.getUserUploads);
+router.put('/:id', verifyToken, mediaController.updateUserMedia);
+router.delete('/:id', verifyToken, mediaController.deleteUserMedia);
+
 module.exports = router;

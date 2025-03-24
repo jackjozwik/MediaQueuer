@@ -243,7 +243,72 @@ router.post('/update-profile-image',
                 }
             });
         } catch (error) {
-            console.error('Update profile image error:', error);
+            console.error('Error updating profile image:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Internal server error'
+            });
+        }
+    }
+);
+
+// Delete profile image
+router.delete('/delete-profile-image',
+    verifyToken,
+    async (req, res) => {
+        try {
+            // Check if profile_image column exists
+            const tableInfo = db.prepare("PRAGMA table_info(users)").all();
+            const hasProfileImage = tableInfo.some(column => column.name === 'profile_image');
+            
+            if (!hasProfileImage) {
+                return res.status(500).json({
+                    success: false,
+                    message: 'Profile image feature not available - database needs migration'
+                });
+            }
+            
+            // Get current profile image
+            const user = db.prepare('SELECT profile_image FROM users WHERE id = ?').get(req.user.id);
+            
+            if (!user || !user.profile_image) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'No profile image found to delete'
+                });
+            }
+            
+            // Try to delete the file from the filesystem
+            try {
+                const filePath = path.join(__dirname, '..', user.profile_image.replace(/^\//, ''));
+                if (fs.existsSync(filePath)) {
+                    fs.unlinkSync(filePath);
+                }
+            } catch (fileError) {
+                console.error('Error deleting profile image file:', fileError);
+                // Continue even if file deletion fails
+            }
+            
+            // Update user record to remove profile image
+            const result = db.prepare(`
+              UPDATE users 
+              SET profile_image = NULL, updated_at = datetime('now')
+              WHERE id = ?
+            `).run(req.user.id);
+
+            if (result.changes === 0) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'User not found'
+                });
+            }
+
+            return res.json({
+                success: true,
+                message: 'Profile image deleted successfully'
+            });
+        } catch (error) {
+            console.error('Error deleting profile image:', error);
             return res.status(500).json({
                 success: false,
                 message: 'Internal server error'

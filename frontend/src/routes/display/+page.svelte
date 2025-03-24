@@ -279,16 +279,14 @@
 
 				<div class="media-info" class:hidden={currentItem.metadata?.hide_info}>
 					<div class="info-content">
-						<!-- Profile image section -->
-						<div class="profile-section">
-							{#if currentItem.profile_image}
+						<!-- Profile image section - only shown if profile image exists -->
+						{#if currentItem.profile_image}
+							<div class="profile-section">
 								<div class="profile-image">
 									<img src={currentItem.profile_image} alt="Profile" />
 								</div>
-							{:else}
-								<div class="profile-placeholder"></div>
-							{/if}
-						</div>
+							</div>
+						{/if}
 
 						<!-- Text content section -->
 						<div class="text-section">

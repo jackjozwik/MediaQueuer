@@ -241,10 +241,11 @@ const getApprovedMedia = async (req, res) => {
       SELECT 
         m.id, m.title, m.description, m.file_path, m.file_type, 
         m.duration, m.display_order, m.created_at, m.approved_at, m.metadata,
-        m.qr_code, 
+        m.qr_code, m.approved_by,
         u.username as uploaded_by, 
         u.first_name, u.last_name, u.preferred_name,
-        COALESCE(u.preferred_name, u.first_name) || ' ' || u.last_name as full_name
+        COALESCE(u.preferred_name, u.first_name) || ' ' || u.last_name as full_name,
+        approver.username as approved_by_username
     `;
 
     // Add profile_image only if column exists
@@ -255,6 +256,7 @@ const getApprovedMedia = async (req, res) => {
     query += `
       FROM media m
       JOIN users u ON m.user_id = u.id
+      LEFT JOIN users approver ON m.approved_by = approver.id
       WHERE m.status = 'approved'
       ORDER BY 
         CASE WHEN m.display_order IS NULL THEN 1 ELSE 0 END, 
@@ -283,8 +285,8 @@ const getApprovedMedia = async (req, res) => {
       };
     });
 
-    // Cache media items for auto-advancement
-    displayState.cacheMediaItems(mediaWithUrls);
+    // We've moved to a new sync system, don't use the old caching method
+    // displayState.cacheMediaItems(mediaWithUrls);
 
     return res.json({
       success: true,
@@ -732,6 +734,340 @@ const skipToMedia = async (req, res) => {
   }
 };
 
+// Archive a media item
+const archiveMedia = async (req, res) => {
+  const { id } = req.params;
+  
+  try {
+    // Check if media exists and is approved
+    const media = db.prepare('SELECT * FROM media WHERE id = ?').get(id);
+    
+    if (!media) {
+      return res.status(404).json({
+        success: false,
+        message: 'Media not found'
+      });
+    }
+    
+    if (media.status !== 'approved') {
+      return res.status(400).json({
+        success: false,
+        message: 'Only approved media can be archived'
+      });
+    }
+    
+    // Archive the media
+    const result = db.prepare(`
+      UPDATE media
+      SET status = 'archived', archived_at = datetime('now'), archived_by = ?
+      WHERE id = ?
+    `).run(req.user.id, id);
+    
+    if (result.changes === 0) {
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to archive media'
+      });
+    }
+    
+    // Clear the media cache to reflect changes
+    if (displayState && typeof displayState.clearMediaCache === 'function') {
+      displayState.clearMediaCache();
+    }
+    
+    return res.json({
+      success: true,
+      message: 'Media archived successfully'
+    });
+  } catch (error) {
+    console.error('Archive media error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+};
+
+// Restore an archived media item
+const restoreMedia = async (req, res) => {
+  const { id } = req.params;
+  
+  try {
+    // Check if media exists and is archived
+    const media = db.prepare('SELECT * FROM media WHERE id = ?').get(id);
+    
+    if (!media) {
+      return res.status(404).json({
+        success: false,
+        message: 'Media not found'
+      });
+    }
+    
+    if (media.status !== 'archived') {
+      return res.status(400).json({
+        success: false,
+        message: 'Only archived media can be restored'
+      });
+    }
+    
+    // Restore the media
+    const result = db.prepare(`
+      UPDATE media
+      SET status = 'approved', approved_at = datetime('now'), approved_by = ?
+      WHERE id = ?
+    `).run(req.user.id, id);
+    
+    if (result.changes === 0) {
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to restore media'
+      });
+    }
+    
+    // Clear the media cache to reflect changes
+    if (displayState && typeof displayState.clearMediaCache === 'function') {
+      displayState.clearMediaCache();
+    }
+    
+    return res.json({
+      success: true,
+      message: 'Media restored successfully'
+    });
+  } catch (error) {
+    console.error('Restore media error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+};
+
+// Get archived media
+const getArchivedMedia = async (req, res) => {
+  try {
+    // Check if profile_image column exists in the users table
+    const tableInfo = db.prepare("PRAGMA table_info(users)").all();
+    const hasProfileImage = tableInfo.some(column => column.name === 'profile_image');
+
+    // Build the query based on column availability
+    let query = `
+      SELECT 
+        m.id, m.title, m.description, m.file_path, m.file_type, 
+        m.duration, m.display_order, m.created_at, m.approved_at, m.metadata,
+        m.qr_code, m.approved_by, m.archived_at, m.archived_by,
+        u.username as uploaded_by, 
+        u.first_name, u.last_name, u.preferred_name,
+        COALESCE(u.preferred_name, u.first_name) || ' ' || u.last_name as full_name,
+        approver.username as approved_by_username,
+        archiver.username as archived_by_username
+    `;
+
+    // Add profile_image only if column exists
+    if (hasProfileImage) {
+      query += `, u.profile_image`;
+    }
+
+    query += `
+      FROM media m
+      JOIN users u ON m.user_id = u.id
+      LEFT JOIN users approver ON m.approved_by = approver.id
+      LEFT JOIN users archiver ON m.archived_by = archiver.id
+      WHERE m.status = 'archived'
+      ORDER BY m.archived_at DESC
+    `;
+
+    const media = db.prepare(query).all();
+
+    // Transform file paths to URLs
+    const mediaWithUrls = media.map(item => {
+      // Parse metadata if it exists
+      let metadata = {};
+      try {
+        if (item.metadata) {
+          metadata = JSON.parse(item.metadata);
+        }
+      } catch (err) {
+        console.warn('Error parsing metadata for item', item.id, err);
+      }
+
+      return {
+        ...item,
+        file_url: `/uploads/${path.basename(item.file_path)}`,
+        metadata: metadata
+      };
+    });
+
+    return res.json({
+      success: true,
+      data: { media: mediaWithUrls }
+    });
+  } catch (error) {
+    console.error('Get archived media error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+};
+
+// Get user uploads
+const getUserUploads = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const query = `
+      SELECT m.*, u.email, u.first_name, u.last_name, u.preferred_name,
+        CASE 
+          WHEN u.preferred_name IS NOT NULL AND u.preferred_name != '' 
+          THEN u.preferred_name 
+          ELSE u.first_name || ' ' || u.last_name 
+        END as full_name
+      FROM media m
+      LEFT JOIN users u ON m.user_id = u.id
+      WHERE m.user_id = ?
+      ORDER BY m.created_at DESC
+    `;
+
+    const userMedia = db.prepare(query).all(userId);
+
+    const mediaWithUrls = userMedia.map(media => ({
+      ...media,
+      file_url: `/uploads/${path.basename(media.file_path)}`,
+      qr_code: media.qr_code ? `/uploads/qrcodes/${path.basename(media.qr_code)}` : null
+    }));
+
+    return res.json({
+      success: true,
+      data: {
+        media: mediaWithUrls
+      }
+    });
+  } catch (err) {
+    console.error('Error fetching user uploads:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch your uploads'
+    });
+  }
+};
+
+// Update user media
+const updateUserMedia = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const { title, description } = req.body;
+
+    // First check if the media belongs to the user
+    const mediaCheck = db.prepare('SELECT * FROM media WHERE id = ? AND user_id = ?').get(id, userId);
+
+    if (!mediaCheck) {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have permission to update this media'
+      });
+    }
+
+    // Update the media
+    db.prepare(`
+      UPDATE media 
+      SET title = ?, description = ?, status = 'pending' 
+      WHERE id = ?
+    `).run(title, description, id);
+
+    // Get the updated media
+    const updatedMedia = db.prepare(`
+      SELECT m.*, u.email, u.first_name, u.last_name, u.preferred_name,
+        CASE 
+          WHEN u.preferred_name IS NOT NULL AND u.preferred_name != '' 
+          THEN u.preferred_name 
+          ELSE u.first_name || ' ' || u.last_name 
+        END as full_name
+      FROM media m
+      LEFT JOIN users u ON m.user_id = u.id
+      WHERE m.id = ?
+    `).get(id);
+
+    const mediaWithUrl = {
+      ...updatedMedia,
+      file_url: `/uploads/${path.basename(updatedMedia.file_path)}`,
+      qr_code: updatedMedia.qr_code ? `/uploads/qrcodes/${path.basename(updatedMedia.qr_code)}` : null
+    };
+
+    // If it was previously approved, update the display state
+    if (mediaCheck.status === 'approved') {
+      // Remove from the timeline
+      displayState.clearMediaCache();
+    }
+
+    return res.json({
+      success: true,
+      message: 'Media updated successfully. It will need to be approved again.',
+      data: {
+        media: mediaWithUrl
+      }
+    });
+  } catch (err) {
+    console.error('Error updating user media:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to update media'
+    });
+  }
+};
+
+// Delete user media
+const deleteUserMedia = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    // First check if the media belongs to the user
+    const media = db.prepare('SELECT * FROM media WHERE id = ? AND user_id = ?').get(id, userId);
+
+    if (!media) {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have permission to delete this media'
+      });
+    }
+
+    // Delete the media record
+    db.prepare('DELETE FROM media WHERE id = ?').run(id);
+
+    // Attempt to delete the physical file
+    try {
+      if (media.file_path) {
+        fs.unlinkSync(media.file_path);
+      }
+      
+      // Also delete QR code if it exists
+      if (media.qr_code) {
+        fs.unlinkSync(media.qr_code);
+      }
+    } catch (fileErr) {
+      console.error('Error deleting media file:', fileErr);
+      // Continue even if file deletion fails
+    }
+
+    // If it was approved, refresh the media cache
+    if (media.status === 'approved') {
+      displayState.clearMediaCache();
+    }
+
+    return res.json({
+      success: true,
+      message: 'Media deleted successfully'
+    });
+  } catch (err) {
+    console.error('Error deleting user media:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to delete media'
+    });
+  }
+};
+
 module.exports = {
   uploadMedia,
   getApprovedMedia,
@@ -746,5 +1082,11 @@ module.exports = {
   getSyncDisplayState,   // New endpoint for sync mode
   updateVideoDuration,   // Update video duration
   resetTimeline,         // Reset timeline to start
-  skipToMedia            // Skip to specific media
+  skipToMedia,          // Skip to specific media
+  archiveMedia,
+  restoreMedia,
+  getArchivedMedia,
+  getUserUploads,
+  updateUserMedia,
+  deleteUserMedia
 };

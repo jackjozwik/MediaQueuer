@@ -8,16 +8,20 @@
   let viewMode = 'list'; // 'list' or 'grid'
   let pendingMedia = [];
   let approvedMedia = [];
+  let archivedMedia = [];
+  let totalPlaybackDuration = 0; // Total duration in seconds
   let settings = {};
   let loading = {
     pending: true,
     approved: true,
-    settings: true
+    settings: true,
+    archived: true
   };
   let error = {
     pending: null,
     approved: null,
-    settings: null
+    settings: null,
+    archived: null
   };
   
   // Drag and drop state
@@ -39,6 +43,38 @@
   // Confirmation dialogs
   let showDeleteConfirm = false;
   let mediaToDelete = null;
+  
+  // Media being viewed in modal
+  let viewingMedia = null;
+  
+  // Toast notification
+  let toast = {
+    show: false,
+    message: '',
+    type: 'success', // 'success', 'error', 'info'
+    timeoutId: null
+  };
+  
+  // Show toast notification
+  function showToast(message, type = 'success', duration = 3000) {
+    // Clear any existing timeout
+    if (toast.timeoutId) {
+      clearTimeout(toast.timeoutId);
+    }
+    
+    // Set toast properties
+    toast = {
+      show: true,
+      message,
+      type,
+      timeoutId: null
+    };
+    
+    // Hide toast after duration
+    toast.timeoutId = setTimeout(() => {
+      toast = {...toast, show: false};
+    }, duration);
+  }
   
   // Fetch pending media
   async function fetchPendingMedia() {
@@ -78,6 +114,11 @@
       
       if (result.success && result.data && result.data.media) {
         approvedMedia = result.data.media;
+        
+        // Calculate total playback duration
+        totalPlaybackDuration = approvedMedia.reduce((total, item) => {
+          return total + (Number(item.duration) || 0);
+        }, 0);
       } else {
         error.approved = result.message || 'Failed to load approved media';
       }
@@ -86,6 +127,33 @@
       error.approved = 'Error loading approved media';
     } finally {
       loading.approved = false;
+    }
+  }
+  
+  // Fetch archived media
+  async function fetchArchivedMedia() {
+    loading.archived = true;
+    error.archived = null;
+    
+    try {
+      const response = await fetch('/api/media/archived', {
+        headers: {
+          'Authorization': `Bearer ${$token}`
+        }
+      });
+      
+      const result = await response.json();
+      
+      if (result.success && result.data && result.data.media) {
+        archivedMedia = result.data.media;
+      } else {
+        error.archived = result.message || 'Failed to load archived media';
+      }
+    } catch (err) {
+      console.error('Error fetching archived media:', err);
+      error.archived = 'Error loading archived media';
+    } finally {
+      loading.archived = false;
     }
   }
   
@@ -116,6 +184,50 @@
       error.settings = 'Error loading settings';
     } finally {
       loading.settings = false;
+    }
+  }
+  
+  // Save settings
+  async function saveSettings() {
+    try {
+      // Get elements from the form
+      const autoApproveValue = document.getElementById('auto_approve').value;
+      const defaultImageDurationValue = document.getElementById('default_image_duration').value;
+      const autoArchiveDaysValue = document.getElementById('auto_archive_days').value;
+      
+      // Update settings one by one
+      const settingsToUpdate = [
+        { key: 'auto_approve', value: autoApproveValue },
+        { key: 'default_image_duration', value: defaultImageDurationValue },
+        { key: 'auto_archive_days', value: autoArchiveDaysValue }
+      ];
+      
+      for (const setting of settingsToUpdate) {
+        const response = await fetch(`/api/admin/settings/${setting.key}`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${$token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ value: setting.value })
+        });
+        
+        const result = await response.json();
+        
+        if (!result.success) {
+          throw new Error(`Failed to update ${setting.key}: ${result.message}`);
+        }
+      }
+      
+      // Show success toast instead of alert
+      showToast('Settings saved successfully', 'success');
+      
+      // Refresh settings
+      fetchSettings();
+    } catch (err) {
+      console.error('Error saving settings:', err);
+      // Show error toast instead of alert
+      showToast(`Error saving settings: ${err.message}`, 'error');
     }
   }
   
@@ -376,11 +488,89 @@
     showDeleteConfirm = true;
   }
   
+  // Archive media item
+  async function archiveMediaItem(id) {
+    try {
+      const response = await fetch(`/api/media/archive/${id}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${$token}`
+        }
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        // Show success toast
+        showToast('Media archived successfully', 'success');
+        
+        // Refresh media lists
+        fetchApprovedMedia();
+        fetchArchivedMedia();
+      } else {
+        showToast(result.message || 'Failed to archive media', 'error');
+      }
+    } catch (err) {
+      console.error('Error archiving media:', err);
+      showToast('Error archiving media', 'error');
+    }
+  }
+  
+  // Restore media item from archive
+  async function restoreMedia(id) {
+    try {
+      const response = await fetch(`/api/media/restore/${id}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${$token}`
+        }
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        // Show success toast
+        showToast('Media restored successfully', 'success');
+        
+        // Refresh media lists
+        fetchApprovedMedia();
+        fetchArchivedMedia();
+      } else {
+        showToast(result.message || 'Failed to restore media', 'error');
+      }
+    } catch (err) {
+      console.error('Error restoring media:', err);
+      showToast('Error restoring media', 'error');
+    }
+  }
+  
   // Initialize component
   onMount(() => {
     fetchPendingMedia();
     fetchApprovedMedia();
+    fetchArchivedMedia();
     fetchSettings();
+    
+    // Add ESC key handler to close modals
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        // Close any open modals
+        if (editingMedia) {
+          editingMedia = null;
+        } else if (showDeleteConfirm) {
+          showDeleteConfirm = false;
+        } else if (viewingMedia) {
+          viewingMedia = null;
+        }
+      }
+    };
+    
+    document.addEventListener('keydown', handleKeyDown);
+    
+    // Cleanup on unmount
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
   });
 </script>
 
@@ -405,6 +595,13 @@
       on:click={() => activeTab = 'content'}
     >
       Content Management
+    </button>
+    <button 
+      class="tab-btn" 
+      class:active={activeTab === 'archives'} 
+      on:click={() => activeTab = 'archives'}
+    >
+      Archives
     </button>
     <button 
       class="tab-btn" 
@@ -436,9 +633,9 @@
               <div class="media-item">
                 <div class="media-preview">
                   {#if media.file_type === 'image' || media.file_type.startsWith('image/')}
-                    <img src={media.file_url} alt={media.title} />
+                    <img src={media.file_url} alt={media.title} on:click={() => viewingMedia = media} />
                   {:else if media.file_type === 'video' || media.file_type.startsWith('video/')}
-                    <video src={media.file_url} controls muted></video>
+                    <video src={media.file_url} controls muted on:click={() => viewingMedia = media}></video>
                   {:else}
                     <div class="unknown-media">{media.file_type}</div>
                   {/if}
@@ -457,6 +654,7 @@
                 <div class="media-actions">
                   <button class="approve-btn" on:click={() => approveMedia(media.id)}>Approve</button>
                   <button class="reject-btn" on:click={() => rejectMedia(media.id)}>Reject</button>
+                  <button class="edit-btn" on:click={() => showEditForm(media)}>Edit</button>
                 </div>
               </div>
             {/each}
@@ -480,6 +678,16 @@
         {:else if approvedMedia.length === 0}
           <div class="empty">No approved media available.</div>
         {:else}
+          <!-- Total Playback Duration Display -->
+          <div class="duration-info">
+            <h3>Total Playback Duration:</h3>
+            <p>
+              <!-- Format duration in hours, minutes, seconds without decimals -->
+              {Math.floor(totalPlaybackDuration / 3600)}h {Math.floor((totalPlaybackDuration % 3600) / 60)}m {Math.floor(totalPlaybackDuration % 60)}s
+              ({Math.floor(totalPlaybackDuration)} seconds)
+            </p>
+          </div>
+          
           <!-- Display mode toggle -->
           <div class="view-toggle">
             <button class="view-btn" class:active={viewMode === 'list'} on:click={() => viewMode = 'list'}>
@@ -514,42 +722,9 @@
                   <div class="drag-handle">⋮⋮</div>
                   <div class="media-preview small">
                     {#if media.file_type === 'image' || media.file_type.startsWith('image/')}
-                      <img src={media.file_url} alt={media.title} />
+                      <img src={media.file_url} alt={media.title} on:click={() => viewingMedia = media} />
                     {:else if media.file_type === 'video' || media.file_type.startsWith('video/')}
-                      <video src={media.file_url} controls muted></video>
-                    {:else}
-                      <div class="unknown-media">{media.file_type}</div>
-                    {/if}
-                  </div>
-                  <div class="media-details">
-                    <h3>{media.title || 'Untitled'}</h3>
-                    <p class="metadata">
-                      <span class="type">Type: {media.file_type}</span>
-                      {#if media.file_type === 'image' || media.file_type.startsWith('image/')}
-                        <span class="duration">Duration: {media.duration || 10}s</span>
-                      {/if}
-                      <span class="uploader">By: {media.uploaded_by}</span>
-                    </p>
-                  </div>
-                  <div class="order-number">{index + 1}</div>
-                  <div class="media-actions">
-                    <button class="edit-btn" on:click={() => showEditForm(media)}>Edit</button>
-                    <button class="delete-btn" on:click={() => confirmDelete(media)}>Delete</button>
-                  </div>
-                </div>
-              {/each}
-            </div>
-          {:else}
-            <!-- Grid View -->
-            <div class="media-list grid">
-              {#each approvedMedia as media (media.id)}
-                <div class="media-card">
-                  <div class="order-badge">{media.display_order || '–'}</div>
-                  <div class="media-preview">
-                    {#if media.file_type === 'image' || media.file_type.startsWith('image/')}
-                      <img src={media.file_url} alt={media.title} />
-                    {:else if media.file_type === 'video' || media.file_type.startsWith('video/')}
-                      <video src={media.file_url} controls muted></video>
+                      <video src={media.file_url} controls muted on:click={() => viewingMedia = media}></video>
                     {:else}
                       <div class="unknown-media">{media.file_type}</div>
                     {/if}
@@ -563,16 +738,118 @@
                         <span class="duration">Duration: {media.duration || 10}s</span>
                       {/if}
                       <span class="uploader">By: {media.uploaded_by}</span>
+                      {#if media.approved_by_username}
+                        <span class="approver">Approved by: {media.approved_by_username}</span>
+                      {/if}
+                    </p>
+                  </div>
+                  <div class="order-number">{index + 1}</div>
+                  <div class="media-actions">
+                    <button class="edit-btn" on:click={() => showEditForm(media)}>Edit</button>
+                    <button class="delete-btn" on:click={() => confirmDelete(media)}>Delete</button>
+                    <button class="archive-btn" on:click={() => archiveMediaItem(media.id)}>Archive</button>
+                  </div>
+                </div>
+              {/each}
+            </div>
+          {:else}
+            <!-- Grid View -->
+            <div class="media-list grid">
+              {#each approvedMedia as media (media.id)}
+                <div class="media-card">
+                  <div class="order-badge">{media.display_order || '–'}</div>
+                  <div class="media-preview">
+                    {#if media.file_type === 'image' || media.file_type.startsWith('image/')}
+                      <img src={media.file_url} alt={media.title} on:click={() => viewingMedia = media} />
+                    {:else if media.file_type === 'video' || media.file_type.startsWith('video/')}
+                      <video src={media.file_url} controls muted on:click={() => viewingMedia = media}></video>
+                    {:else}
+                      <div class="unknown-media">{media.file_type}</div>
+                    {/if}
+                  </div>
+                  <div class="media-details">
+                    <h3>{media.title || 'Untitled'}</h3>
+                    <p class="description">{media.description || 'No description'}</p>
+                    <p class="metadata">
+                      <span class="type">Type: {media.file_type}</span>
+                      {#if media.file_type === 'image' || media.file_type.startsWith('image/')}
+                        <span class="duration">Duration: {media.duration || 10}s</span>
+                      {/if}
+                      <span class="uploader">By: {media.uploaded_by}</span>
+                      {#if media.approved_by_username}
+                        <span class="approver">Approved by: {media.approved_by_username}</span>
+                      {/if}
                     </p>
                   </div>
                   <div class="media-actions">
                     <button class="edit-btn" on:click={() => showEditForm(media)}>Edit</button>
                     <button class="delete-btn" on:click={() => confirmDelete(media)}>Delete</button>
+                    <button class="archive-btn" on:click={() => archiveMediaItem(media.id)}>Archive</button>
                   </div>
                 </div>
               {/each}
             </div>
           {/if}
+        {/if}
+      </div>
+    {/if}
+    
+    <!-- Archives Tab -->
+    {#if activeTab === 'archives'}
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Archives</h2>
+          <button class="refresh-btn" on:click={fetchArchivedMedia}>Refresh</button>
+        </div>
+        
+        {#if loading.archived}
+          <div class="loading">Loading archived media...</div>
+        {:else if error.archived}
+          <div class="error">{error.archived}</div>
+        {:else if archivedMedia.length === 0}
+          <div class="empty">No archived media available.</div>
+        {:else}
+          <div class="media-list">
+            {#each archivedMedia as media (media.id)}
+              <div class="media-item">
+                <div class="media-preview">
+                  {#if media.file_type === 'image' || media.file_type.startsWith('image/')}
+                    <img src={media.file_url} alt={media.title} on:click={() => viewingMedia = media} />
+                  {:else if media.file_type === 'video' || media.file_type.startsWith('video/')}
+                    <video src={media.file_url} controls muted on:click={() => viewingMedia = media}></video>
+                  {:else}
+                    <div class="unknown-media">{media.file_type}</div>
+                  {/if}
+                </div>
+                <div class="media-details">
+                  <h3>{media.title || 'Untitled'}</h3>
+                  <p class="description">{media.description || 'No description'}</p>
+                  <p class="metadata">
+                    <span class="type">Type: {media.file_type}</span>
+                    {#if media.file_type === 'image' || media.file_type.startsWith('image/')}
+                      <span class="duration">Duration: {media.duration || 10}s</span>
+                    {/if}
+                    <span class="uploader">By: {media.uploaded_by}</span>
+                    {#if media.approved_by_username}
+                      <span class="approver">Approved by: {media.approved_by_username}</span>
+                    {/if}
+                    {#if media.archived_by_username}
+                      <span class="archiver">Archived by: {media.archived_by_username}</span>
+                    {/if}
+                    {#if media.archived_at}
+                      <span class="archive-date">
+                        Archived on: {new Date(media.archived_at).toLocaleString()}
+                      </span>
+                    {/if}
+                  </p>
+                </div>
+                <div class="media-actions">
+                  <button class="restore-btn" on:click={() => restoreMedia(media.id)}>Restore</button>
+                  <button class="delete-btn" on:click={() => confirmDelete(media)}>Delete</button>
+                </div>
+              </div>
+            {/each}
+          </div>
         {/if}
       </div>
     {/if}
@@ -612,7 +889,19 @@
               <p class="help-text">Default duration to display images if not specified</p>
             </div>
             
-            <button class="save-btn">Save Settings</button>
+            <div class="setting-item">
+              <label for="auto_archive_days">Auto-Archive Content (days)</label>
+              <input 
+                type="number" 
+                id="auto_archive_days" 
+                value={settings.auto_archive_days || 0} 
+                min="0" 
+                max="365"
+              />
+              <p class="help-text">Number of days after which content is automatically archived. Set to 0 to disable.</p>
+            </div>
+            
+            <button class="save-btn" on:click={saveSettings}>Save Settings</button>
           </div>
         {/if}
       </div>
@@ -701,7 +990,71 @@
       </div>
     </div>
   {/if}
+  
+  <!-- View Media Modal -->
+  {#if viewingMedia}
+    <div class="modal-overlay fullscreen">
+      <div class="modal-fullscreen">
+        <div class="modal-header">
+          <h2>{viewingMedia.title || 'Untitled'}</h2>
+          <button class="close-btn" on:click={() => viewingMedia = null}>×</button>
+        </div>
+        <div class="modal-body">
+          <div class="fullscreen-preview">
+            {#if viewingMedia.file_type === 'image' || viewingMedia.file_type.startsWith('image/')}
+              <img src={viewingMedia.file_url} alt={viewingMedia.title} />
+            {:else if viewingMedia.file_type === 'video' || viewingMedia.file_type.startsWith('video/')}
+              <video src={viewingMedia.file_url} controls autoplay></video>
+            {:else}
+              <div class="unknown-media">{viewingMedia.file_type}</div>
+            {/if}
+          </div>
+          
+          <div class="media-info">
+            <h3>{viewingMedia.title || 'Untitled'}</h3>
+            <p class="description">{viewingMedia.description || 'No description'}</p>
+            <p class="metadata">
+              <span class="type">Type: {viewingMedia.file_type}</span>
+              {#if viewingMedia.file_type === 'image' || viewingMedia.file_type.startsWith('image/')}
+                <span class="duration">Duration: {viewingMedia.duration || 10}s</span>
+              {/if}
+              <span class="uploader">By: {viewingMedia.uploaded_by}</span>
+              {#if viewingMedia.approved_by_username}
+                <span class="approver">Approved by: {viewingMedia.approved_by_username}</span>
+              {/if}
+            </p>
+            
+            <div class="modal-actions">
+              {#if viewingMedia.status === 'pending'}
+                <button class="approve-btn" on:click={() => { approveMedia(viewingMedia.id); viewingMedia = null; }}>Approve</button>
+                <button class="reject-btn" on:click={() => { rejectMedia(viewingMedia.id); viewingMedia = null; }}>Reject</button>
+              {/if}
+              <button class="edit-btn" on:click={() => { showEditForm(viewingMedia); viewingMedia = null; }}>Edit</button>
+              {#if viewingMedia.status === 'approved'}
+                <button class="delete-btn" on:click={() => { confirmDelete(viewingMedia); viewingMedia = null; }}>Delete</button>
+              {/if}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  {/if}
 </div>
+
+<!-- Toast Notification Component -->
+{#if toast.show}
+  <div 
+    class="toast-notification" 
+    class:success={toast.type === 'success'} 
+    class:error={toast.type === 'error'}
+    class:info={toast.type === 'info'}
+  >
+    <div class="toast-content">
+      <span class="toast-message">{toast.message}</span>
+      <button class="toast-close" on:click={() => toast = {...toast, show: false}}>×</button>
+    </div>
+  </div>
+{/if}
 
 <style>
   .admin-container {
@@ -1157,5 +1510,181 @@
   .warning {
     color: #c62828;
     font-weight: 500;
+  }
+  
+  .fullscreen-preview {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    max-height: 70vh;
+    margin-bottom: 1rem;
+    overflow: hidden;
+  }
+  
+  .fullscreen-preview img {
+    max-width: 100%;
+    max-height: 70vh;
+    object-fit: contain;
+  }
+  
+  .fullscreen-preview video {
+    max-width: 100%;
+    max-height: 70vh;
+  }
+  
+  .modal-fullscreen {
+    width: 90%;
+    max-width: 1200px;
+    max-height: 90vh;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+    overflow-y: auto;
+  }
+  
+  .media-info {
+    padding: 1rem;
+  }
+  
+  .modal-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1rem;
+  }
+  
+  /* Make images and videos clickable */
+  .media-preview img,
+  .media-preview video {
+    cursor: pointer;
+  }
+  
+  .duration-info {
+    background-color: #f5f5f5;
+    padding: 1rem;
+    border-radius: 4px;
+    margin-bottom: 1rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  .duration-info h3 {
+    margin: 0 0 0.5rem 0;
+    color: #1976d2;
+  }
+  
+  .duration-info p {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 500;
+  }
+  
+  .approver {
+    margin-left: 0.5rem;
+    padding: 0.1rem 0.5rem;
+    background-color: #e3f2fd;
+    border-radius: 3px;
+    font-size: 0.85rem;
+    color: #0d47a1;
+  }
+  
+  /* Toast Notification Styles */
+  .toast-notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 0.75rem 1rem;
+    border-radius: 4px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    z-index: 1000;
+    min-width: 200px;
+    max-width: 400px;
+    animation: slideIn 0.3s ease-out forwards;
+  }
+  
+  @keyframes slideIn {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  
+  .toast-notification.success {
+    background-color: #43a047;
+    color: white;
+  }
+  
+  .toast-notification.error {
+    background-color: #e53935;
+    color: white;
+  }
+  
+  .toast-notification.info {
+    background-color: #1976d2;
+    color: white;
+  }
+  
+  .toast-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  
+  .toast-message {
+    flex: 1;
+  }
+  
+  .toast-close {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 1.2rem;
+    cursor: pointer;
+    margin-left: 0.5rem;
+    opacity: 0.8;
+  }
+  
+  .toast-close:hover {
+    opacity: 1;
+  }
+  
+  .archive-btn {
+    background-color: #ff9800;
+    color: white;
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    text-align: center;
+    width: 100%;
+  }
+  
+  .restore-btn {
+    background-color: #8bc34a;
+    color: white;
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    text-align: center;
+    width: 100%;
+  }
+  
+  .archiver {
+    margin-left: 0.5rem;
+    padding: 0.1rem 0.5rem;
+    background-color: #fff3e0;
+    border-radius: 3px;
+    font-size: 0.85rem;
+    color: #e65100;
+  }
+  
+  .archive-date {
+    margin-left: 0.5rem;
+    padding: 0.1rem 0.5rem;
+    background-color: #f1f1f1;
+    border-radius: 3px;
+    font-size: 0.85rem;
+    color: #616161;
   }
 </style>

@@ -6,7 +6,6 @@
   let file = null;
   let title = '';
   let description = '';
-  let duration = 10; // Default duration for images in seconds
   let uploading = false;
   let error = null;
   let success = null;
@@ -25,7 +24,6 @@
     file = null;
     title = '';
     description = '';
-    duration = 10;
     previewUrl = null;
     qrCodeFile = null;
     qrCodePreviewUrl = null;
@@ -147,11 +145,6 @@
     formData.append('media', file);
     formData.append('title', title);
     formData.append('description', description);
-    
-    // Only append duration for images
-    if (file.type.startsWith('image/')) {
-      formData.append('duration', duration);
-    }
     
     try {
       // Upload the file
@@ -293,21 +286,6 @@
           disabled={uploading}
         ></textarea>
       </div>
-      
-      {#if isImage && isAdminOrFaculty}
-        <div class="form-group">
-          <label for="duration">Display Duration (seconds):</label>
-          <input 
-            type="number" 
-            id="duration" 
-            bind:value={duration} 
-            min="1" 
-            max="60"
-            disabled={uploading}
-          />
-          <div class="help-text">How long to display this image before moving to the next item</div>
-        </div>
-      {/if}
       
       <!-- QR Code Section -->
       <div class="form-group qr-code-section">

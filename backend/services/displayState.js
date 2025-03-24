@@ -22,29 +22,57 @@ let virtualPlayerTimer = null;
 let periodicRefreshTimer = null;
 let lastMediaCount = 0;
 
+// Variables for timeline synchronization
+let startedAt = Date.now();
+let currentItemIndex = 0;
+let lastItemChange = Date.now();
+let initMediaCount = 0;
+
+/**
+ * Get the count of approved media items
+ * @returns {number} Count of approved media
+ */
+function getMediaCount() {
+  try {
+    // Query for count of approved media
+    const count = db.prepare('SELECT COUNT(*) as count FROM media WHERE status = ?').get('approved');
+    return count ? count.count : 0;
+  } catch (error) {
+    console.error('Error getting media count:', error);
+    return 0;
+  }
+}
+
 /**
  * Initialize the sync display state
  */
-function initSyncDisplayState() {
-  // Check if we already have a state in cache
-  const cachedState = cache.get(SYNC_STATE_KEY);
-  
-  if (!cachedState) {
-    console.log('[VIRTUAL PLAYER] Initializing sync display state');
-    cache.set(SYNC_STATE_KEY, defaultDisplayState);
+async function initSyncDisplayState() {
+  try {
+    // Get initial media count
+    initMediaCount = getMediaCount();
+    
+    // Set up state variables
+    startedAt = Date.now();
+    currentItemIndex = 0;
+    lastItemChange = Date.now();
+    
+    // Start the periodic refresh
+    startPeriodicRefresh();
+    
+    // Start auto-archive check if enabled
+    startAutoArchiveCheck();
+    
+    // Get initial media items
+    const mediaItems = getSyncMediaItems();
+    
+    // Initialize the virtual player
+    startVirtualPlayer();
+    
+    return mediaItems;
+  } catch (error) {
+    console.error('Error initializing sync display state:', error);
+    return [];
   }
-  
-  // Get initial media count
-  const mediaItems = getSyncMediaItems();
-  lastMediaCount = mediaItems.length;
-  
-  // Start the periodic refresh
-  startPeriodicRefresh();
-  
-  // Start the virtual player
-  startVirtualPlayer();
-  
-  return cachedState || defaultDisplayState;
 }
 
 /**
@@ -77,6 +105,7 @@ function getSyncMediaItems() {
         m.qr_code, 
         u.username as uploaded_by, 
         u.first_name, u.last_name, u.preferred_name,
+        u.profile_image,
         COALESCE(u.preferred_name, u.first_name) || ' ' || u.last_name as full_name
       FROM media m
       JOIN users u ON m.user_id = u.id
@@ -104,6 +133,16 @@ function getSyncMediaItems() {
           item.qr_code = `/uploads/qrcodes/${qrFilename}`;
         } else if (!item.qr_code.startsWith('/') && !item.qr_code.startsWith('http')) {
           item.qr_code = `/uploads/qrcodes/${item.qr_code}`;
+        }
+      }
+      
+      // Process profile image path
+      if (item.profile_image && typeof item.profile_image === 'string') {
+        if (item.profile_image.includes('\\') || item.profile_image.includes('/')) {
+          const profileFilename = item.profile_image.split('\\').pop().split('/').pop();
+          item.profile_image = `/uploads/profiles/${profileFilename}`;
+        } else if (!item.profile_image.startsWith('/') && !item.profile_image.startsWith('http')) {
+          item.profile_image = `/uploads/profiles/${item.profile_image}`;
         }
       }
       
@@ -334,35 +373,18 @@ function startVirtualPlayer() {
  */
 function checkForMediaChanges() {
   try {
-    // Check if cache exists first
-    const cachedMedia = cache.get(SYNC_MEDIA_KEY);
+    // Get current count of approved media
+    const currentCount = getMediaCount();
     
-    if (!cachedMedia) {
-      // If no cache, get fresh media
-      getSyncMediaItems();
-      return;
-    }
-    
-    // Count approved media in database
-    const countQuery = `
-      SELECT COUNT(*) as count 
-      FROM media 
-      WHERE status = 'approved'
-    `;
-    
-    const result = db.prepare(countQuery).get();
-    const currentMediaCount = result.count;
-    
-    // If count has changed, refresh the media
-    if (currentMediaCount !== lastMediaCount) {
-      console.log(`[VIRTUAL PLAYER] Media count changed from ${lastMediaCount} to ${currentMediaCount}, refreshing...`);
-      cache.del(SYNC_MEDIA_KEY);
-      const freshMedia = getSyncMediaItems();
-      lastMediaCount = currentMediaCount;
+    // If count has changed, refresh cache
+    if (currentCount !== lastMediaCount) {
+      console.log(`Media count changed from ${lastMediaCount} to ${currentCount}, refreshing cache`);
+      clearMediaCache();
+      lastMediaCount = currentCount;
       
-      // If playing an item beyond the new list, reset
-      const state = getSyncDisplayState();
-      if (state.currentIndex >= freshMedia.length) {
+      // Reset the timeline if this is a significant change
+      // Only if virtual player is running and we have media
+      if (virtualPlayerTimer && currentCount > 0) {
         resetTimeline();
       }
     }
@@ -395,6 +417,87 @@ function stopPeriodicRefresh() {
   }
 }
 
+// Auto-archive old content based on settings
+async function checkForAutoArchive() {
+  try {
+    // Get auto-archive days setting
+    const autoArchiveSetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('auto_archive_days');
+    
+    if (!autoArchiveSetting || !autoArchiveSetting.value) {
+      return; // No setting found
+    }
+    
+    const autoArchiveDays = parseInt(autoArchiveSetting.value, 10);
+    
+    // If setting is 0 or invalid, auto-archive is disabled
+    if (autoArchiveDays <= 0) {
+      return;
+    }
+    
+    console.log(`Checking for content older than ${autoArchiveDays} days to auto-archive...`);
+    
+    // Find approved media older than the setting
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - autoArchiveDays);
+    
+    const cutoffDateString = cutoffDate.toISOString();
+    
+    // Find admin user for attribution
+    const adminUser = db.prepare("SELECT id FROM users WHERE role = 'admin' LIMIT 1").get();
+    
+    if (!adminUser) {
+      console.error('Cannot auto-archive: No admin user found for attribution');
+      return;
+    }
+    
+    // Get media to archive
+    const mediaToArchive = db.prepare(`
+      SELECT id FROM media 
+      WHERE status = 'approved' 
+      AND approved_at < ?
+    `).all(cutoffDateString);
+    
+    if (mediaToArchive.length === 0) {
+      console.log('No content to auto-archive');
+      return;
+    }
+    
+    console.log(`Auto-archiving ${mediaToArchive.length} items...`);
+    
+    // Archive each item
+    const stmt = db.prepare(`
+      UPDATE media
+      SET status = 'archived', archived_at = datetime('now'), archived_by = ?
+      WHERE id = ?
+    `);
+    
+    db.transaction(() => {
+      for (const item of mediaToArchive) {
+        stmt.run(adminUser.id, item.id);
+      }
+    })();
+    
+    console.log(`Auto-archived ${mediaToArchive.length} items successfully`);
+    
+    // Clear media cache to reflect changes
+    clearMediaCache();
+    
+  } catch (error) {
+    console.error('Error in auto-archive process:', error);
+  }
+}
+
+// Start auto-archive check
+function startAutoArchiveCheck() {
+  // Check once on startup
+  checkForAutoArchive();
+  
+  // Check daily
+  setInterval(() => {
+    checkForAutoArchive();
+  }, 24 * 60 * 60 * 1000); // 24 hours
+}
+
 // Make sure we clean up on module exit
 process.on('exit', () => {
   stopVirtualPlayer();
@@ -413,4 +516,4 @@ module.exports = {
   resetTimeline,
   skipToMedia,
   clearMediaCache,
-}; 
+};

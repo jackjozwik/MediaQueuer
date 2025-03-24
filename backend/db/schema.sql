@@ -25,14 +25,17 @@ CREATE TABLE IF NOT EXISTS media (
   duration INTEGER, -- in seconds for still images, NULL for videos
   display_order INTEGER, -- for sorting in the display queue
   user_id INTEGER NOT NULL,
-  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'rejected')),
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'rejected', 'archived')),
   created_at DATETIME NOT NULL,
   approved_at DATETIME,
   approved_by INTEGER,
+  archived_at DATETIME,
+  archived_by INTEGER,
   metadata TEXT, -- JSON string with additional data
   qr_code TEXT, -- Path to QR code image
   FOREIGN KEY (user_id) REFERENCES users(id),
-  FOREIGN KEY (approved_by) REFERENCES users(id)
+  FOREIGN KEY (approved_by) REFERENCES users(id),
+  FOREIGN KEY (archived_by) REFERENCES users(id)
 );
 
 -- Settings table for global configuration
@@ -51,4 +54,5 @@ VALUES
   ('default_image_duration', '10', datetime('now')),
   ('auto_approve', 'false', datetime('now')),
   ('upload_path', 'uploads', datetime('now')),
-  ('content_rotation', 'equal', datetime('now'));
+  ('content_rotation', 'equal', datetime('now')),
+  ('auto_archive_days', '0', datetime('now')); -- 0 means disabled, any positive number is days until auto-archive
