@@ -829,7 +829,6 @@
                       {/if}
                     </p>
                   </div>
-                  <div class="order-number">{index + 1}</div>
                   <div class="media-actions">
                     <button class="edit-btn" on:click={() => showEditForm(media)}>Edit</button>
                     <button class="delete-btn" on:click={() => confirmDelete(media)}>Delete</button>
@@ -1929,5 +1928,11 @@
   .empty-state {
     padding: 2rem;
     text-align: center;
+  }
+
+  .order-number {
+    color: #616161;
+    font-weight: bold;
+    padding: 0.0rem 0.5rem;
   }
 </style>

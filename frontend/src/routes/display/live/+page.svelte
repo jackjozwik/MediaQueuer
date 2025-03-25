@@ -3,6 +3,8 @@
   import { onMount, onDestroy } from 'svelte';
   import { mediaItems, displayState } from '$lib/displayStore';
   import DisplayModeIndicator from '../../../components/DisplayModeIndicator.svelte';
+  import { fade } from 'svelte/transition';
+  import { toTitleCase, capitalizeSentences, capitalizeNames } from '$lib/textFormat';
   
   export let data;
   
@@ -207,7 +209,7 @@
       {#if currentItem && (!currentItem.metadata?.hide_info)}
         <div class="media-info">
           <div class="info-content">
-            <!-- Profile image section -->
+            <!-- Profile section -->
             <div class="profile-section">
               {#if currentItem.profile_image}
                 <div class="profile-image">
@@ -221,20 +223,20 @@
             <!-- Text content section -->
             <div class="text-section">
               {#if !currentItem.metadata?.hide_title}
-                <h2 class="title">{currentItem.title || 'Untitled'}</h2>
+                <h2 class="title">{toTitleCase(currentItem.title || 'Untitled')}</h2>
               {/if}
-
+              
               {#if currentItem.description && !currentItem.metadata?.hide_description}
-                <p class="description">{currentItem.description}</p>
+                <p class="description">{capitalizeSentences(currentItem.description)}</p>
               {/if}
-
+              
               {#if !currentItem.metadata?.hide_creator}
                 <p class="creator">
-                  Created by: {currentItem.full_name || currentItem.uploaded_by || 'Unknown'}
+                  Created by: {capitalizeNames(currentItem.full_name || currentItem.uploaded_by || 'Unknown')}
                 </p>
               {/if}
             </div>
-
+            
             <!-- QR code section - only shown if one exists -->
             {#if hasQRCode}
               <div class="qr-code-section">
@@ -295,12 +297,14 @@
 
   .media-info {
     position: absolute;
-    bottom: 0;
+    bottom: 20px;
     left: 0;
     background-color: rgba(0, 0, 0, 0.7);
     box-sizing: border-box;
-    width: auto;
-    max-width: min(650px, 65%);
+    width: 650px;
+    max-width: 65%;
+    min-height: 130px;
+    height: auto;
     border-top-right-radius: 8px;
   }
 
@@ -308,6 +312,8 @@
     display: flex;
     align-items: center;
     padding: 16px;
+    min-height: 100%;
+    overflow: visible;
   }
 
   /* Profile image section */
@@ -344,8 +350,8 @@
     font-size: 1.5rem;
     font-weight: 600;
     margin: 0 0 6px 0;
-    white-space: nowrap;
-    overflow: hidden;
+    overflow: visible;
+    white-space: normal;
     text-overflow: ellipsis;
   }
 
@@ -372,13 +378,16 @@
     padding-left: 20px;
     flex-shrink: 0;
   }
-
+  
   .qr-code {
-    width: 80px;
-    height: 80px;
+    width: 120px;
+    height: auto;
+    max-height: 120px;
     background-color: #fff;
     padding: 4px;
     border-radius: 4px;
+    object-fit: contain; /* Maintain aspect ratio */
+    margin: auto;
   }
 
   .video-element {
