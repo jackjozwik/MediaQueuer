@@ -3,6 +3,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { mediaItems, displayState } from '$lib/displayStore';
   import DisplayModeIndicator from '../../../components/DisplayModeIndicator.svelte';
+  import MediaInfo from '../../../components/MediaInfo.svelte';
   import { fade } from 'svelte/transition';
   import { toTitleCase, capitalizeSentences, capitalizeNames } from '$lib/textFormat';
   
@@ -206,45 +207,8 @@
       {/if}
 
       <!-- Show media info if available -->
-      {#if currentItem && (!currentItem.metadata?.hide_info)}
-        <div class="media-info">
-          <div class="info-content">
-            <!-- Profile section -->
-            <div class="profile-section">
-              {#if currentItem.profile_image}
-                <div class="profile-image">
-                  <img src={currentItem.profile_image} alt="Profile" />
-                </div>
-              {:else}
-                <div class="profile-placeholder"></div>
-              {/if}
-            </div>
-
-            <!-- Text content section -->
-            <div class="text-section">
-              {#if !currentItem.metadata?.hide_title}
-                <h2 class="title">{toTitleCase(currentItem.title || 'Untitled')}</h2>
-              {/if}
-              
-              {#if currentItem.description && !currentItem.metadata?.hide_description}
-                <p class="description">{capitalizeSentences(currentItem.description)}</p>
-              {/if}
-              
-              {#if !currentItem.metadata?.hide_creator}
-                <p class="creator">
-                  Created by: {capitalizeNames(currentItem.full_name || currentItem.uploaded_by || 'Unknown')}
-                </p>
-              {/if}
-            </div>
-            
-            <!-- QR code section - only shown if one exists -->
-            {#if hasQRCode}
-              <div class="qr-code-section">
-                <img src={currentItem.qr_code} alt="QR Code" class="qr-code" />
-              </div>
-            {/if}
-          </div>
-        </div>
+      {#if !currentItem.metadata?.hide_info}
+        <MediaInfo {currentItem} {hasQRCode} />
       {/if}
     </div>
   {/if}
@@ -293,101 +257,6 @@
     width: 100%;
     height: 100%;
     object-fit: contain;
-  }
-
-  .media-info {
-    position: absolute;
-    bottom: 20px;
-    left: 0;
-    background-color: rgba(0, 0, 0, 0.7);
-    box-sizing: border-box;
-    width: 650px;
-    max-width: 65%;
-    min-height: 130px;
-    height: auto;
-    border-top-right-radius: 8px;
-  }
-
-  .info-content {
-    display: flex;
-    align-items: center;
-    padding: 16px;
-    min-height: 100%;
-    overflow: visible;
-  }
-
-  /* Profile image section */
-  .profile-section {
-    margin-right: 20px;
-    flex-shrink: 0;
-  }
-
-  .profile-image,
-  .profile-placeholder {
-    width: 60px;
-    height: 60px;
-    border-radius: 50%;
-    overflow: hidden;
-    border: 2px solid rgba(255, 255, 255, 0.5);
-    background-color: #333;
-  }
-
-  .profile-image img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-
-  /* Text content section */
-  .text-section {
-    flex: 1;
-    margin-right: 20px;
-    min-width: 0;
-    max-width: 100%;
-  }
-
-  .title {
-    font-size: 1.5rem;
-    font-weight: 600;
-    margin: 0 0 6px 0;
-    overflow: visible;
-    white-space: normal;
-    text-overflow: ellipsis;
-  }
-
-  .description {
-    font-size: 1rem;
-    margin: 0 0 6px 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    opacity: 0.9;
-  }
-
-  .creator {
-    font-size: 0.9rem;
-    margin: 0;
-    opacity: 0.7;
-  }
-
-  /* QR code section */
-  .qr-code-section {
-    border-left: 1px solid rgba(255, 255, 255, 0.3);
-    padding-left: 20px;
-    flex-shrink: 0;
-  }
-  
-  .qr-code {
-    width: 120px;
-    height: auto;
-    max-height: 120px;
-    background-color: #fff;
-    padding: 4px;
-    border-radius: 4px;
-    object-fit: contain; /* Maintain aspect ratio */
-    margin: auto;
   }
 
   .video-element {
