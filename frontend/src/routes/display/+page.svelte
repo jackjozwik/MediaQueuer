@@ -14,7 +14,7 @@
 	let error = data.error || null;
 	let refreshInterval;
 	let mediaElement;
-	let isPlaying = false;
+	let isPlaying = true;
 	let apiResponse = null; // For debugging
 
 	// Determine if user is an admin
@@ -205,6 +205,54 @@
 			showIndicator = false;
 		}, 5000);
 	}
+
+	// Add playback control functions
+	function togglePlayPause() {
+		isPlaying = !isPlaying;
+		
+		if (isPlaying) {
+			// Resume playback
+			if (isVideo && mediaElement) {
+				mediaElement.play();
+			} else {
+				// For images, start a new timer
+				const duration = currentItem?.duration ? parseInt(currentItem.duration) * 1000 : 10000;
+				refreshInterval = setTimeout(() => advanceMedia(), duration);
+			}
+		} else {
+			// Pause playback
+			if (isVideo && mediaElement) {
+				mediaElement.pause();
+			}
+			// Clear any existing timers
+			if (refreshInterval) {
+				clearTimeout(refreshInterval);
+			}
+		}
+	}
+	
+	function goToPrevious() {
+		if (mediaItems.length === 0) return;
+		
+		// Clear any existing timers
+		if (refreshInterval) {
+			clearTimeout(refreshInterval);
+		}
+		
+		const prevIndex = (currentIndex - 1 + mediaItems.length) % mediaItems.length;
+		showMedia(prevIndex);
+	}
+	
+	function goToNext() {
+		if (mediaItems.length === 0) return;
+		
+		// Clear any existing timers
+		if (refreshInterval) {
+			clearTimeout(refreshInterval);
+		}
+		
+		advanceMedia();
+	}
 </script>
 
 <svelte:head>
@@ -321,6 +369,33 @@
 <a href="/display/sync" class="mode-switch-button">
   Switch to Synchronized Mode
 </a>
+
+<!-- Playback controls -->
+<div class="playback-controls">
+  <button class="control-btn prev-btn" on:click={goToPrevious} title="Previous">
+    <svg viewBox="0 0 24 24" width="24" height="24">
+      <path fill="currentColor" d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+    </svg>
+  </button>
+  
+  <button class="control-btn play-pause-btn" on:click={togglePlayPause} title={isPlaying ? 'Pause' : 'Play'}>
+    {#if isPlaying}
+      <svg viewBox="0 0 24 24" width="24" height="24">
+        <path fill="currentColor" d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+      </svg>
+    {:else}
+      <svg viewBox="0 0 24 24" width="24" height="24">
+        <path fill="currentColor" d="M8 5v14l11-7z"/>
+      </svg>
+    {/if}
+  </button>
+  
+  <button class="control-btn next-btn" on:click={goToNext} title="Next">
+    <svg viewBox="0 0 24 24" width="24" height="24">
+      <path fill="currentColor" d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
+    </svg>
+  </button>
+</div>
 
 <style>
 	.display-container {
@@ -544,15 +619,56 @@
     }
 
     .mode-switch-button {
-        position: fixed;
-        top: 10px;
-        right: 10px;
-        background-color: rgba(0, 0, 0, 0.7);
+        position: absolute;
+        bottom: 20px;
+        right: 20px;
+        background-color: rgba(0, 0, 0, 0.6);
         color: white;
-        padding: 8px 12px;
-        border-radius: 4px;
         text-decoration: none;
+        padding: 8px 16px;
+        border-radius: 4px;
         font-size: 14px;
-        z-index: 1000;
+        z-index: 1002;
+    }
+    
+    .mode-switch-button:hover {
+        background-color: rgba(0, 0, 0, 0.8);
+    }
+    
+    /* Playback controls */
+    .playback-controls {
+        position: absolute;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 20px;
+        background-color: rgba(0, 0, 0, 0.6);
+        padding: 10px 20px;
+        border-radius: 30px;
+        z-index: 1002;
+    }
+    
+    .control-btn {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background-color: rgba(255, 255, 255, 0.2);
+        border: none;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+    
+    .control-btn:hover {
+        background-color: rgba(255, 255, 255, 0.3);
+    }
+    
+    .play-pause-btn {
+        width: 50px;
+        height: 50px;
     }
 </style>

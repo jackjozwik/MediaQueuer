@@ -27,6 +27,7 @@ let startedAt = Date.now();
 let currentItemIndex = 0;
 let lastItemChange = Date.now();
 let initMediaCount = 0;
+let lastUserUpdateTimestamp = 0; // Track last user profile update timestamp
 
 /**
  * Get the count of approved media items
@@ -50,6 +51,9 @@ async function initSyncDisplayState() {
   try {
     // Get initial media count
     initMediaCount = getMediaCount();
+    
+    // Get initial user update timestamp
+    lastUserUpdateTimestamp = getLatestUserUpdateTimestamp();
     
     // Set up state variables
     startedAt = Date.now();
@@ -376,20 +380,61 @@ function checkForMediaChanges() {
     // Get current count of approved media
     const currentCount = getMediaCount();
     
-    // If count has changed, refresh cache
-    if (currentCount !== lastMediaCount) {
-      console.log(`Media count changed from ${lastMediaCount} to ${currentCount}, refreshing cache`);
+    // Check for user profile updates
+    const latestUserUpdate = getLatestUserUpdateTimestamp();
+    
+    // If count has changed or user profiles updated, refresh cache
+    const countChanged = currentCount !== lastMediaCount;
+    const profilesChanged = latestUserUpdate > lastUserUpdateTimestamp;
+    
+    if (countChanged || profilesChanged) {
+      if (countChanged) {
+        console.log(`Media count changed from ${lastMediaCount} to ${currentCount}, refreshing cache`);
+      }
+      if (profilesChanged) {
+        console.log(`User profiles updated at ${new Date(latestUserUpdate).toISOString()}, refreshing cache`);
+      }
+      
       clearMediaCache();
       lastMediaCount = currentCount;
+      lastUserUpdateTimestamp = latestUserUpdate;
       
-      // Reset the timeline if this is a significant change
+      // Reset the timeline if media count changed significantly
       // Only if virtual player is running and we have media
-      if (virtualPlayerTimer && currentCount > 0) {
+      if (countChanged && virtualPlayerTimer && currentCount > 0) {
         resetTimeline();
       }
     }
   } catch (error) {
     console.error('Error checking for media changes:', error);
+  }
+}
+
+/**
+ * Get the timestamp of the latest user profile update
+ * @returns {number} Timestamp of latest update
+ */
+function getLatestUserUpdateTimestamp() {
+  try {
+    const query = `
+      SELECT MAX(updated_at) as latest_update 
+      FROM users
+      WHERE profile_image IS NOT NULL 
+         OR first_name IS NOT NULL 
+         OR last_name IS NOT NULL 
+         OR preferred_name IS NOT NULL
+    `;
+    
+    const result = db.prepare(query).get();
+    
+    if (result && result.latest_update) {
+      // Convert SQLite timestamp to JS timestamp
+      return new Date(result.latest_update).getTime();
+    }
+    return 0;
+  } catch (error) {
+    console.error('Error getting latest user update:', error);
+    return 0;
   }
 }
 

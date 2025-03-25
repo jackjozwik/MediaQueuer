@@ -1,4 +1,3 @@
-
 // routes/admin.js
 const express = require('express');
 const router = express.Router();
@@ -66,7 +65,8 @@ router.put('/settings/:key', verifyToken, isAdmin, (req, res) => {
 router.get('/users', verifyToken, isAdmin, (req, res) => {
   try {
     const users = db.prepare(`
-      SELECT id, username, role, created_at, updated_at
+      SELECT id, username, role, email, first_name, last_name, preferred_name,
+             created_at, updated_at
       FROM users
       ORDER BY created_at DESC
     `).all();
@@ -80,6 +80,47 @@ router.get('/users', verifyToken, isAdmin, (req, res) => {
     return res.status(500).json({ 
       success: false, 
       message: 'Internal server error' 
+    });
+  }
+});
+
+// Update user role
+router.put('/users/:id/role', verifyToken, isAdmin, (req, res) => {
+  const { id } = req.params;
+  const { role } = req.body;
+  
+  // Validate role
+  if (!role || !['student', 'faculty', 'admin'].includes(role)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid role. Must be student, faculty, or admin'
+    });
+  }
+  
+  try {
+    // Check if user exists
+    const user = db.prepare('SELECT 1 FROM users WHERE id = ?').get(id);
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    // Update role
+    db.prepare('UPDATE users SET role = ?, updated_at = datetime("now") WHERE id = ?')
+      .run(role, id);
+    
+    return res.json({
+      success: true,
+      message: 'User role updated successfully'
+    });
+  } catch (error) {
+    console.error('Update user role error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error'
     });
   }
 });

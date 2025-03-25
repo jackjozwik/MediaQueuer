@@ -9,19 +9,22 @@
   let pendingMedia = [];
   let approvedMedia = [];
   let archivedMedia = [];
+  let users = []; // Added users array
   let totalPlaybackDuration = 0; // Total duration in seconds
   let settings = {};
   let loading = {
     pending: true,
     approved: true,
     settings: true,
-    archived: true
+    archived: true,
+    users: true // Added loading state for users
   };
   let error = {
     pending: null,
     approved: null,
     settings: null,
-    archived: null
+    archived: null,
+    users: null // Added error state for users
   };
   
   // Drag and drop state
@@ -109,19 +112,21 @@
     error.approved = null;
     
     try {
-      const response = await fetch('/api/media/approved');
-      const result = await response.json();
+      const response = await fetch('/api/media/approved', {
+        headers: {
+          'Authorization': `Bearer ${$token}`
+        }
+      });
       
-      if (result.success && result.data && result.data.media) {
-        approvedMedia = result.data.media;
-        
-        // Calculate total playback duration
-        totalPlaybackDuration = approvedMedia.reduce((total, item) => {
-          return total + (Number(item.duration) || 0);
-        }, 0);
-      } else {
-        error.approved = result.message || 'Failed to load approved media';
+      const data = await response.json();
+      
+      if (!data.success) {
+        error.approved = data.message || 'Failed to load approved media';
+        return;
       }
+      
+      approvedMedia = data.data.media;
+      calculateTotalDuration();
     } catch (err) {
       console.error('Error fetching approved media:', err);
       error.approved = 'Error loading approved media';
@@ -544,12 +549,84 @@
     }
   }
   
+  // Calculate total playback duration
+  function calculateTotalDuration() {
+    totalPlaybackDuration = approvedMedia.reduce((total, item) => {
+      return total + (Number(item.duration) || 0);
+    }, 0);
+  }
+  
+  // Fetch users for role management
+  async function fetchUsers() {
+    loading.users = true;
+    error.users = null;
+    
+    try {
+      const response = await fetch('/api/admin/users', {
+        headers: {
+          'Authorization': `Bearer ${$token}`
+        }
+      });
+      
+      const data = await response.json();
+      
+      if (!data.success) {
+        error.users = data.message || 'Failed to load users';
+        return;
+      }
+      
+      users = data.data.users;
+    } catch (err) {
+      console.error('Error fetching users:', err);
+      error.users = 'Error loading users';
+    } finally {
+      loading.users = false;
+    }
+  }
+  
+  // Update user role
+  async function updateUserRole(userId, newRole) {
+    try {
+      const response = await fetch(`/api/admin/users/${userId}/role`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${$token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ role: newRole })
+      });
+      
+      const data = await response.json();
+      
+      if (!data.success) {
+        showToast(data.message || 'Failed to update user role', 'error');
+        return false;
+      }
+      
+      // Update local user data
+      users = users.map(user => {
+        if (user.id === userId) {
+          return { ...user, role: newRole };
+        }
+        return user;
+      });
+      
+      showToast('User role updated successfully', 'success');
+      return true;
+    } catch (err) {
+      console.error('Error updating user role:', err);
+      showToast('Error updating user role', 'error');
+      return false;
+    }
+  }
+  
   // Initialize component
   onMount(() => {
     fetchPendingMedia();
     fetchApprovedMedia();
     fetchArchivedMedia();
     fetchSettings();
+    fetchUsers();
     
     // Add ESC key handler to close modals
     const handleKeyDown = (event) => {
@@ -609,6 +686,13 @@
       on:click={() => activeTab = 'settings'}
     >
       System Settings
+    </button>
+    <button 
+      class="tab-btn" 
+      class:active={activeTab === 'users'} 
+      on:click={() => activeTab = 'users'}
+    >
+      Users
     </button>
   </div>
   
@@ -736,6 +820,8 @@
                       <span class="type">Type: {media.file_type}</span>
                       {#if media.file_type === 'image' || media.file_type.startsWith('image/')}
                         <span class="duration">Duration: {media.duration || 10}s</span>
+                      {:else if media.file_type === 'video' || media.file_type.startsWith('video/')}
+                        <span class="duration">Duration: {media.duration ? `${media.duration.toFixed(0)}s` : 'Unknown'}</span>
                       {/if}
                       <span class="uploader">By: {media.uploaded_by}</span>
                       {#if media.approved_by_username}
@@ -774,6 +860,8 @@
                       <span class="type">Type: {media.file_type}</span>
                       {#if media.file_type === 'image' || media.file_type.startsWith('image/')}
                         <span class="duration">Duration: {media.duration || 10}s</span>
+                      {:else if media.file_type === 'video' || media.file_type.startsWith('video/')}
+                        <span class="duration">Duration: {media.duration ? `${media.duration}s` : 'Unknown'}</span>
                       {/if}
                       <span class="uploader">By: {media.uploaded_by}</span>
                       {#if media.approved_by_username}
@@ -906,6 +994,80 @@
         {/if}
       </div>
     {/if}
+    
+    <!-- USERS TAB -->
+    {#if activeTab === 'users'}
+      <div class="panel-content">
+        <h2>User Role Management</h2>
+        <p class="panel-description">
+          Manage user roles and permissions. Only administrators can change user roles.
+        </p>
+        
+        {#if error.users}
+          <div class="error-message">{error.users}</div>
+        {/if}
+        
+        {#if loading.users}
+          <div class="loading-spinner">
+            <div class="spinner"></div>
+            <p>Loading users...</p>
+          </div>
+        {:else if users.length === 0}
+          <div class="empty-state">
+            <p>No users found.</p>
+          </div>
+        {:else}
+          <div class="users-table-container">
+            <table class="users-table">
+              <thead>
+                <tr>
+                  <th>Username</th>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Current Role</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each users as user (user.id)}
+                  <tr>
+                    <td>{user.username}</td>
+                    <td>
+                      {#if user.preferred_name}
+                        {user.preferred_name} {user.last_name}
+                      {:else if user.first_name && user.last_name}
+                        {user.first_name} {user.last_name}
+                      {:else}
+                        -
+                      {/if}
+                    </td>
+                    <td>{user.email}</td>
+                    <td>
+                      <span class="role-badge role-{user.role}">
+                        {user.role}
+                      </span>
+                    </td>
+                    <td>
+                      <div class="role-actions">
+                        <select 
+                          class="role-select"
+                          value={user.role}
+                          on:change={(e) => updateUserRole(user.id, e.target.value)}
+                        >
+                          <option value="student">Student</option>
+                          <option value="faculty">Faculty</option>
+                          <option value="admin">Admin</option>
+                        </select>
+                      </div>
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        {/if}
+      </div>
+    {/if}
   </div>
   
   <!-- Edit Media Modal -->
@@ -1017,6 +1179,8 @@
               <span class="type">Type: {viewingMedia.file_type}</span>
               {#if viewingMedia.file_type === 'image' || viewingMedia.file_type.startsWith('image/')}
                 <span class="duration">Duration: {viewingMedia.duration || 10}s</span>
+              {:else if viewingMedia.file_type === 'video' || viewingMedia.file_type.startsWith('video/')}
+                <span class="duration">Duration: {viewingMedia.duration ? `${viewingMedia.duration}s` : 'Unknown'}</span>
               {/if}
               <span class="uploader">By: {viewingMedia.uploaded_by}</span>
               {#if viewingMedia.approved_by_username}
@@ -1686,5 +1850,84 @@
     border-radius: 3px;
     font-size: 0.85rem;
     color: #616161;
+  }
+  
+  .users-table-container {
+    max-width: 800px;
+    margin: 0 auto;
+  }
+  
+  .users-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  
+  .users-table th, .users-table td {
+    padding: 0.75rem;
+    text-align: left;
+  }
+  
+  .users-table th {
+    background-color: #f5f5f5;
+  }
+  
+  .role-badge {
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.85rem;
+  }
+  
+  .role-badge.role-student {
+    background-color: #e3f2fd;
+    color: #0d47a1;
+  }
+  
+  .role-badge.role-faculty {
+    background-color: #fff9c4;
+    color: #f57f17;
+  }
+  
+  .role-badge.role-admin {
+    background-color: #ffebee;
+    color: #c62828;
+  }
+  
+  .role-actions {
+    display: flex;
+    gap: 0.5rem;
+  }
+  
+  .role-select {
+    padding: 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+  }
+  
+  .loading-spinner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+  }
+  
+  .spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid rgba(0, 0, 0, 0.1);
+    border-top: 4px solid #1976d2;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 1rem;
+  }
+  
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+  
+  .empty-state {
+    padding: 2rem;
+    text-align: center;
   }
 </style>

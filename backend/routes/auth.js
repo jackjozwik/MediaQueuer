@@ -9,10 +9,11 @@ const path = require('path');
 
 // Public routes
 router.post('/login', authController.login);
+router.post('/register', authController.registerPublicUser);
 
 // Protected routes
 router.get('/me', verifyToken, authController.getCurrentUser);
-router.post('/register', verifyToken, isAdmin, authController.registerUser);
+router.post('/admin/register', verifyToken, isAdmin, authController.registerUser);
 
 const profileStorage = multer.diskStorage({
     destination: function (req, file, cb) {

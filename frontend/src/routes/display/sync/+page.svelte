@@ -174,14 +174,50 @@
       try {
         // Only refresh if we're not in the middle of a transition
         if (!loading) {
-          console.log('Checking for new content...');
+          console.log('Checking for new content and updates...');
           const response = await fetch('/api/media/sync-state');
           const result = await response.json();
           
           if (result.success && result.data) {
             // Check if the media list has changed
-            if (JSON.stringify(mediaItems.map(item => item.id)) !== 
-                JSON.stringify(result.data.media.map(item => item.id))) {
+            const currentIds = mediaItems.map(item => item.id);
+            const newIds = result.data.media.map(item => item.id);
+            const idsChanged = JSON.stringify(currentIds) !== JSON.stringify(newIds);
+            
+            // Check if the current item's user data has changed even if IDs are the same
+            let userDataChanged = false;
+            if (!idsChanged && currentIndex < mediaItems.length) {
+              const currentItem = mediaItems[currentIndex];
+              const newItem = result.data.media.find(item => item.id === currentItem.id);
+              
+              if (newItem) {
+                // Check if profile image or user details changed
+                userDataChanged = (
+                  currentItem.profile_image !== newItem.profile_image ||
+                  currentItem.uploaded_by !== newItem.uploaded_by ||
+                  currentItem.full_name !== newItem.full_name
+                );
+                
+                if (userDataChanged) {
+                  console.log('User profile data has changed, updating current item...');
+                  // Just update the current item with new user data
+                  mediaItems[currentIndex] = {
+                    ...currentItem,
+                    profile_image: newItem.profile_image,
+                    uploaded_by: newItem.uploaded_by,
+                    first_name: newItem.first_name,
+                    last_name: newItem.last_name,
+                    preferred_name: newItem.preferred_name,
+                    full_name: newItem.full_name
+                  };
+                  // Force a refresh
+                  mediaItems = [...mediaItems];
+                }
+              }
+            }
+            
+            // If the entire list changed (not just user data), do a full update
+            if (idsChanged) {
               console.log('Media list has changed, updating...');
               
               // Save current position
@@ -203,7 +239,7 @@
       } catch (error) {
         console.error('Error refreshing content:', error);
       }
-    }, 60000); // Check every minute
+    }, 30000); // Check every 30 seconds (reduced from 60s)
     
     return () => {
       clearInterval(refreshInterval);

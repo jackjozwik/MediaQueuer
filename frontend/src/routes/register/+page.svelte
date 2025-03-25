@@ -9,7 +9,6 @@
     let lastName = '';
     let preferredName = '';
     let email = '';
-    let role = 'student'; // Default role
     let loading = false;
     let error = '';
     let success = '';
@@ -32,8 +31,7 @@
             firstName,
             lastName,
             preferredName: preferredName || firstName,
-            email,
-            role
+            email
           })
         });
         
@@ -151,20 +149,6 @@
             required 
             disabled={loading}
           />
-        </div>
-        
-        <div class="form-group">
-          <label for="role">Role *</label>
-          <select 
-            id="role" 
-            bind:value={role} 
-            required 
-            disabled={loading}
-          >
-            <option value="student">Student</option>
-            <option value="faculty">Faculty</option>
-            <option value="admin">Admin</option>
-          </select>
         </div>
         
         <div class="form-actions">

@@ -183,6 +183,73 @@ const registerUser = async (req, res) => {
   }
 };
 
+// Register public user (always sets role to 'student')
+const registerPublicUser = async (req, res) => {
+  const { username, password, firstName, lastName, preferredName, email } = req.body;
+  
+  // Validate request
+  if (!username || !password || !firstName || !lastName || !email) {
+    return res.status(400).json({ 
+      success: false, 
+      message: 'Username, password, firstName, lastName, and email are required' 
+    });
+  }
+  
+  try {
+    // Check if username already exists
+    const existingUser = db.prepare('SELECT 1 FROM users WHERE username = ?').get(username);
+    
+    if (existingUser) {
+      return res.status(409).json({ 
+        success: false, 
+        message: 'Username already exists' 
+      });
+    }
+    
+    // Check if email already exists
+    const existingEmail = db.prepare('SELECT 1 FROM users WHERE email = ?').get(email);
+    
+    if (existingEmail) {
+      return res.status(409).json({ 
+        success: false, 
+        message: 'Email already exists' 
+      });
+    }
+    
+    // Always set role to 'student' for public registrations
+    const role = 'student';
+    
+    // Insert new user
+    const result = db.prepare(`
+      INSERT INTO users (
+        username, password, role, first_name, last_name, 
+        preferred_name, email, created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+    `).run(
+      username, 
+      password, 
+      role, 
+      firstName, 
+      lastName, 
+      preferredName || firstName,
+      email
+    );
+    
+    return res.status(201).json({
+      success: true,
+      message: 'User registered successfully',
+      data: { id: result.lastInsertRowid }
+    });
+  } catch (error) {
+    console.error('Public register error:', error);
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Internal server error' 
+    });
+  }
+};
+
 // Get current user info
 const getCurrentUser = async (req, res) => {
   try {
@@ -226,5 +293,6 @@ const getCurrentUser = async (req, res) => {
 module.exports = {
   login,
   registerUser,
+  registerPublicUser,
   getCurrentUser
 };
