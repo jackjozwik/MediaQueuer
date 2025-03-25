@@ -11,10 +11,20 @@
   let success = null;
   let previewUrl = null;
   
+  // Character limits
+  const TITLE_MAX_LENGTH = 50;
+  const DESCRIPTION_MAX_LENGTH = 100;
+  
   // QR Code variables
   let qrCodeFile = null;
   let qrCodePreviewUrl = null;
   let uploadingQRCode = false;
+  
+  // Derived values
+  $: titleCharactersLeft = TITLE_MAX_LENGTH - title.length;
+  $: descriptionCharactersLeft = DESCRIPTION_MAX_LENGTH - description.length;
+  $: titleExceeded = titleCharactersLeft < 0;
+  $: descriptionExceeded = descriptionCharactersLeft < 0;
   
   // Check if user is admin or faculty
   $: isAdminOrFaculty = $user && ($user.role === 'admin' || $user.role === 'faculty');
@@ -133,6 +143,16 @@
     
     if (!title) {
       error = 'Please enter a title';
+      return;
+    }
+    
+    if (titleExceeded) {
+      error = `Title exceeds maximum length of ${TITLE_MAX_LENGTH} characters`;
+      return;
+    }
+    
+    if (descriptionExceeded) {
+      error = `Description exceeds maximum length of ${DESCRIPTION_MAX_LENGTH} characters`;
       return;
     }
     
@@ -271,10 +291,14 @@
         <input 
           type="text" 
           id="title" 
-          bind:value={title} 
-          required
+          bind:value={title}
           disabled={uploading}
+          maxlength={TITLE_MAX_LENGTH}
+          required
         />
+        <div class="character-counter {titleExceeded ? 'exceeded' : ''}">
+          {titleCharactersLeft} characters left
+        </div>
       </div>
       
       <div class="form-group">
@@ -284,7 +308,11 @@
           bind:value={description}
           rows="3"
           disabled={uploading}
+          maxlength={DESCRIPTION_MAX_LENGTH}
         ></textarea>
+        <div class="character-counter {descriptionExceeded ? 'exceeded' : ''}">
+          {descriptionCharactersLeft} characters left
+        </div>
       </div>
       
       <!-- QR Code Section -->
@@ -594,5 +622,17 @@
   
   .qr-button {
     white-space: nowrap;
+  }
+  
+  .character-counter {
+    font-size: 0.8rem;
+    color: #666;
+    text-align: right;
+    margin-top: 0.25rem;
+  }
+  
+  .character-counter.exceeded {
+    color: #c62828;
+    font-weight: bold;
   }
 </style>

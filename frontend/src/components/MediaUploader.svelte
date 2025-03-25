@@ -4,6 +4,8 @@
     
     // Props
     export let token;
+    export let uploadEndpoint = '/api/media/upload';
+    export let categories = [];
     
     // Event dispatcher
     const dispatch = createEventDispatcher();
@@ -22,12 +24,20 @@
     let file = null;
     let filePreview = null;
     
+    // Character limits
+    const TITLE_MAX_LENGTH = 80;
+    const DESCRIPTION_MAX_LENGTH = 250;
+    
+    // Derived values
+    $: titleCharactersLeft = TITLE_MAX_LENGTH - title.length;
+    $: descriptionCharactersLeft = DESCRIPTION_MAX_LENGTH - description.length;
+    $: titleExceeded = titleCharactersLeft < 0;
+    $: descriptionExceeded = descriptionCharactersLeft < 0;
+    
     // Handle file selection
     function handleFileSelect(e) {
-      const selectedFile = e.target.files[0];
-      if (selectedFile) {
-        file = selectedFile;
-        updateFilePreview();
+      if (e.target.files && e.target.files[0]) {
+        handleFiles(e.target.files[0]);
       }
     }
     
@@ -50,32 +60,34 @@
       dragActive = false;
       
       if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-        file = e.dataTransfer.files[0];
-        updateFilePreview();
+        handleFiles(e.dataTransfer.files[0]);
       }
     }
     
     // Create file preview
-    function updateFilePreview() {
-      if (!file) {
-        filePreview = null;
-        return;
+    function handleFiles(selectedFile) {
+      file = selectedFile;
+      
+      // Generate preview
+      const fileType = selectedFile.type.startsWith('image/') 
+        ? 'image' 
+        : selectedFile.type.startsWith('video/') 
+          ? 'video' 
+          : null;
+          
+      if (fileType) {
+        filePreview = {
+          type: fileType,
+          url: URL.createObjectURL(selectedFile)
+        };
       }
       
-      if (file.type.startsWith('image/')) {
-        const reader = new FileReader();
-        reader.onload = e => {
-          filePreview = {
-            type: 'image',
-            url: e.target.result
-          };
-        };
-        reader.readAsDataURL(file);
-      } else if (file.type.startsWith('video/')) {
-        filePreview = {
-          type: 'video',
-          url: URL.createObjectURL(file)
-        };
+      // Auto-suggest title from filename
+      if (!title) {
+        title = selectedFile.name.split('.')[0];
+        if (title.length > TITLE_MAX_LENGTH) {
+          title = title.substring(0, TITLE_MAX_LENGTH);
+        }
       }
     }
     
@@ -91,6 +103,16 @@
         return;
       }
       
+      if (titleExceeded) {
+        error = `Title exceeds maximum length of ${TITLE_MAX_LENGTH} characters`;
+        return;
+      }
+      
+      if (descriptionExceeded) {
+        error = `Description exceeds maximum length of ${DESCRIPTION_MAX_LENGTH} characters`;
+        return;
+      }
+      
       uploading = true;
       error = '';
       success = '';
@@ -103,7 +125,7 @@
         formData.append('description', description);
         
         if (file.type.startsWith('image/')) {
-          formData.append('duration', duration);
+          formData.append('duration', duration.toString());
         }
         
         const xhr = new XMLHttpRequest();
@@ -136,7 +158,7 @@
           uploading = false;
         };
         
-        xhr.open('POST', '/api/media/upload');
+        xhr.open('POST', uploadEndpoint);
         xhr.setRequestHeader('Authorization', `Bearer ${token}`);
         xhr.send(formData);
       } catch (err) {
@@ -176,7 +198,11 @@
           bind:value={title} 
           required 
           disabled={uploading}
+          maxlength={TITLE_MAX_LENGTH}
         />
+        <div class="character-counter {titleExceeded ? 'exceeded' : ''}">
+          {titleCharactersLeft} characters left
+        </div>
       </div>
       
       <div class="form-group">
@@ -185,7 +211,11 @@
           id="description" 
           bind:value={description} 
           disabled={uploading}
+          maxlength={DESCRIPTION_MAX_LENGTH}
         ></textarea>
+        <div class="character-counter {descriptionExceeded ? 'exceeded' : ''}">
+          {descriptionCharactersLeft} characters left
+        </div>
       </div>
       
       <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -422,5 +452,17 @@
       padding: 0.75rem;
       border-radius: 4px;
       margin-bottom: 1rem;
+    }
+    
+    .character-counter {
+      font-size: 0.8rem;
+      color: #666;
+      text-align: right;
+      margin-top: 0.25rem;
+    }
+    
+    .character-counter.exceeded {
+      color: #c62828;
+      font-weight: bold;
     }
   </style>
