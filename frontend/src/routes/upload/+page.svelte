@@ -235,25 +235,27 @@
 </svelte:head>
 
 <div class="upload-container">
-  <div class="upload-card">
-    <h1>Upload Media</h1>
-    <p class="subtitle">Upload content to be displayed on the hallway TVs</p>
+  <div class="card upload-card">
+    <div class="card-header">
+      <h1>Upload Media</h1>
+      <p class="subtitle">Upload content to be displayed on the hallway TVs</p>
+    </div>
     
     {#if error}
-      <div class="alert error">
+      <div class="alert alert-error">
         {error}
       </div>
     {/if}
     
     {#if success}
-      <div class="alert success">
+      <div class="alert alert-success">
         {success}
       </div>
     {/if}
     
     <form on:submit|preventDefault={handleSubmit}>
       <div class="form-group">
-        <label for="file">Select or Drop File:</label>
+        <label for="file">Select or Drop File</label>
         <div 
           class="drop-zone" 
           on:dragover={handleDragOver} 
@@ -269,7 +271,13 @@
             class="file-input"
           />
           <div class="drop-message">
-            <div class="icon">📁</div>
+            <div class="icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+            </div>
             <p>Drag and drop your file here or click to select</p>
           </div>
         </div>
@@ -287,7 +295,7 @@
       {/if}
       
       <div class="form-group">
-        <label for="title">Title:</label>
+        <label for="title">Title</label>
         <input 
           type="text" 
           id="title" 
@@ -302,7 +310,7 @@
       </div>
       
       <div class="form-group">
-        <label for="description">Description (optional):</label>
+        <label for="description">Description (optional)</label>
         <textarea 
           id="description" 
           bind:value={description}
@@ -317,14 +325,22 @@
       
       <!-- QR Code Section -->
       <div class="form-group qr-code-section">
-        <label for="qrCode">QR Code (Optional):</label>
+        <h2 class="section-title">QR Code (Optional)</h2>
         <div class="qr-code-container">
           <div class="qr-code-preview-area">
             {#if qrCodePreviewUrl}
               <img src={qrCodePreviewUrl} alt="QR Code Preview" class="qr-code-preview" />
             {:else}
               <div class="qr-code-placeholder">
-                <div class="icon">🔗</div>
+                <div class="icon">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                    <rect x="7" y="7" width="3" height="3"></rect>
+                    <rect x="14" y="7" width="3" height="3"></rect>
+                    <rect x="7" y="14" width="3" height="3"></rect>
+                    <rect x="14" y="14" width="3" height="3"></rect>
+                  </svg>
+                </div>
                 <p>No QR code selected</p>
               </div>
             {/if}
@@ -342,7 +358,7 @@
             />
             <button 
               type="button" 
-              class="btn secondary qr-button" 
+              class="btn-secondary qr-button" 
               on:click={() => document.getElementById('qrCode').click()} 
               disabled={uploading}
             >
@@ -352,7 +368,7 @@
             {#if qrCodeFile}
               <button 
                 type="button" 
-                class="btn clear-button" 
+                class="btn-outline btn-danger" 
                 on:click={clearQRCode} 
                 disabled={uploading}
               >
@@ -367,14 +383,15 @@
       </div>
       
       <div class="form-actions">
-        <button type="submit" class="btn primary" disabled={uploading}>
+        <button type="submit" class="btn-primary" disabled={uploading}>
           {#if uploading}
+            <span class="loading-spinner"></span>
             Uploading...
           {:else}
             Upload Media
           {/if}
         </button>
-        <button type="button" class="btn secondary" on:click={resetForm} disabled={uploading}>
+        <button type="button" class="btn-secondary" on:click={resetForm} disabled={uploading}>
           Clear Form
         </button>
       </div>
@@ -386,64 +403,75 @@
   .upload-container {
     max-width: 800px;
     margin: 0 auto;
-    padding: 1rem;
   }
   
   .upload-card {
-    background-color: white;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    padding: 2rem;
+    padding: var(--space-6);
+  }
+  
+  .card-header {
+    margin-bottom: var(--space-6);
   }
   
   h1 {
-    margin-top: 0;
-    color: #333;
+    color: var(--color-text-primary);
+    margin-bottom: var(--space-2);
   }
   
   .subtitle {
-    color: #666;
-    margin-bottom: 1.5rem;
+    color: var(--color-text-secondary);
   }
   
   .form-group {
-    margin-bottom: 1.5rem;
+    margin-bottom: var(--space-5);
   }
   
   label {
     display: block;
-    margin-bottom: 0.5rem;
-    font-weight: 500;
+    margin-bottom: var(--space-2);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-text-primary);
   }
   
   input[type="text"],
   input[type="number"],
   textarea {
     width: 100%;
-    padding: 0.75rem;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-size: 1rem;
+    padding: var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-base);
+    background-color: var(--color-background);
+    color: var(--color-text-primary);
+    transition: var(--transition-all);
+  }
+  
+  input[type="text"]:focus,
+  input[type="number"]:focus,
+  textarea:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
   }
   
   .drop-zone {
-    border: 2px dashed #ddd;
-    border-radius: 4px;
-    padding: 2rem;
+    border: 2px dashed var(--color-border);
+    border-radius: var(--radius-md);
+    padding: var(--space-8);
     text-align: center;
     cursor: pointer;
-    transition: border-color 0.3s, background-color 0.3s;
+    transition: var(--transition-all);
     position: relative;
+    background-color: var(--color-surface);
   }
   
   .drop-zone:hover {
-    border-color: #1976d2;
-    background-color: rgba(25, 118, 210, 0.05);
+    border-color: var(--color-primary);
+    background-color: var(--color-surface-hover);
   }
   
   .drop-zone.dragover {
-    border-color: #1976d2;
-    background-color: rgba(25, 118, 210, 0.1);
+    border-color: var(--color-primary);
+    background-color: var(--color-surface-hover);
   }
   
   .file-input {
@@ -461,29 +489,28 @@
   }
   
   .drop-message .icon {
-    font-size: 2.5rem;
-    margin-bottom: 0.5rem;
-    color: #777;
+    margin-bottom: var(--space-2);
+    color: var(--color-text-tertiary);
   }
   
   .drop-message p {
     margin: 0;
-    color: #666;
-    font-size: 1rem;
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-base);
   }
   
   .help-text {
-    font-size: 0.85rem;
-    color: #666;
-    margin-top: 0.25rem;
+    font-size: var(--font-size-sm);
+    color: var(--color-text-tertiary);
+    margin-top: var(--space-1);
   }
   
   .preview {
-    margin: 1rem 0;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    padding: 1rem;
-    background-color: #f9f9f9;
+    margin: var(--space-4) 0;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: var(--space-4);
+    background-color: var(--color-surface);
     display: flex;
     justify-content: center;
   }
@@ -491,96 +518,35 @@
   .preview img, .preview video {
     max-width: 100%;
     max-height: 300px;
+    border-radius: var(--radius-sm);
   }
   
-  .alert {
-    padding: 1rem;
-    border-radius: 4px;
-    margin-bottom: 1.5rem;
-  }
-  
-  .error {
-    background-color: #ffebee;
-    color: #c62828;
-    border: 1px solid #ef9a9a;
-  }
-  
-  .success {
-    background-color: #e8f5e9;
-    color: #2e7d32;
-    border: 1px solid #a5d6a7;
-  }
-  
-  .form-actions {
-    display: flex;
-    gap: 1rem;
-    margin-top: 2rem;
-  }
-  
-  .btn {
-    padding: 0.75rem 1.5rem;
-    border: none;
-    border-radius: 4px;
-    font-size: 1rem;
-    cursor: pointer;
-    font-weight: 500;
-    transition: background-color 0.2s;
-  }
-  
-  .btn:disabled {
-    opacity: 0.7;
-    cursor: not-allowed;
-  }
-  
-  .primary {
-    background-color: #1976d2;
-    color: white;
-  }
-  
-  .primary:hover:not(:disabled) {
-    background-color: #1565c0;
-  }
-  
-  .secondary {
-    background-color: #f5f5f5;
-    color: #333;
-    border: 1px solid #ddd;
-  }
-  
-  .secondary:hover:not(:disabled) {
-    background-color: #e0e0e0;
-  }
-  
-  .clear-button {
-    background-color: transparent;
-    color: #d32f2f;
-    border: 1px solid #d32f2f;
-  }
-  
-  .clear-button:hover:not(:disabled) {
-    background-color: rgba(211, 47, 47, 0.1);
+  .section-title {
+    font-size: var(--font-size-lg);
+    margin-bottom: var(--space-3);
+    color: var(--color-text-primary);
   }
   
   /* QR Code styles */
   .qr-code-section {
-    margin-top: 2rem;
-    padding-top: 1.5rem;
-    border-top: 1px solid #eee;
+    margin-top: var(--space-6);
+    padding-top: var(--space-5);
+    border-top: 1px solid var(--color-border);
   }
   
   .qr-code-container {
     display: flex;
     align-items: center;
-    gap: 1.5rem;
-    margin-bottom: 0.5rem;
+    gap: var(--space-5);
+    margin-bottom: var(--space-2);
   }
   
   .qr-code-preview-area {
     width: 120px;
     height: 120px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    background-color: white;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background-color: var(--color-background);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -599,25 +565,24 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    background-color: #f9f9f9;
-    color: #666;
+    background-color: var(--color-surface);
+    color: var(--color-text-tertiary);
   }
   
   .qr-code-placeholder .icon {
-    font-size: 2rem;
-    margin-bottom: 0.5rem;
+    margin-bottom: var(--space-1);
   }
   
   .qr-code-placeholder p {
     margin: 0;
-    font-size: 0.8rem;
+    font-size: var(--font-size-xs);
     text-align: center;
   }
   
   .qr-code-controls {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: var(--space-3);
   }
   
   .qr-button {
@@ -625,14 +590,106 @@
   }
   
   .character-counter {
-    font-size: 0.8rem;
-    color: #666;
+    font-size: var(--font-size-xs);
+    color: var(--color-text-tertiary);
     text-align: right;
-    margin-top: 0.25rem;
+    margin-top: var(--space-1);
   }
   
   .character-counter.exceeded {
-    color: #c62828;
-    font-weight: bold;
+    color: var(--color-error);
+    font-weight: var(--font-weight-medium);
+  }
+
+  .form-actions {
+    display: flex;
+    gap: var(--space-4);
+    margin-top: var(--space-6);
+  }
+  
+  .btn-primary, .btn-secondary, .btn-outline, .btn-danger {
+    padding: var(--space-3) var(--space-5);
+    border-radius: var(--radius-md);
+    font-weight: var(--font-weight-medium);
+    cursor: pointer;
+    font-size: var(--font-size-base);
+    transition: var(--transition-colors);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+  }
+  
+  .btn-primary {
+    background-color: var(--color-primary);
+    color: var(--color-text-on-primary);
+  }
+  
+  .btn-primary:hover:not(:disabled) {
+    background-color: var(--color-primary-hover);
+  }
+  
+  .btn-secondary {
+    background-color: var(--color-surface);
+    color: var(--color-text-primary);
+    border: 1px solid var(--color-border);
+  }
+  
+  .btn-secondary:hover:not(:disabled) {
+    background-color: var(--color-surface-hover);
+  }
+  
+  .btn-outline {
+    background-color: transparent;
+    border: 1px solid currentColor;
+  }
+  
+  .btn-danger {
+    color: var(--color-error);
+  }
+  
+  .btn-danger:hover:not(:disabled) {
+    background-color: var(--color-error-bg);
+  }
+  
+  button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  
+  .loading-spinner {
+    display: inline-block;
+    width: 1rem;
+    height: 1rem;
+    margin-right: var(--space-2);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top-color: white;
+    animation: spin 1s linear infinite;
+  }
+  
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  
+  /* Responsive adjustments */
+  @media (max-width: 640px) {
+    .qr-code-container {
+      flex-direction: column;
+      align-items: center;
+    }
+    
+    .qr-code-controls {
+      flex-direction: row;
+      margin-top: var(--space-2);
+    }
+    
+    .upload-card {
+      padding: var(--space-4);
+    }
+    
+    .form-actions {
+      flex-direction: column;
+    }
   }
 </style>
