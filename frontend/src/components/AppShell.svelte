@@ -46,12 +46,14 @@
     min-height: 100vh;
     background-color: var(--color-background);
     color: var(--color-text-primary);
+    width: 100%;
   }
   
   .content-wrapper {
     display: flex;
     flex-direction: column;
     flex: 1;
+    width: 100%;
   }
   
   .main-content {

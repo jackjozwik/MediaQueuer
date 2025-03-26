@@ -1,10 +1,27 @@
 <!-- src/routes/display/+layout.svelte -->
 <script>
-  // This is a minimal layout for the display route
-  // It doesn't include any navigation or headers
+  import { onMount, onDestroy } from 'svelte';
+  import { page } from '$app/stores';
   
-  // Import a global CSS file instead of using :global in the component
+  // Import global CSS
+  import '../../lib/global.css';
   import './display.css';
+  
+  onMount(() => {
+    // Add display-page class to body when component mounts
+    if (typeof document !== 'undefined') {
+      document.body.classList.add('display-page');
+    }
+  });
+  
+  onDestroy(() => {
+    // Remove display-page class when component unmounts
+    if (typeof document !== 'undefined') {
+      document.body.classList.remove('display-page');
+      // Restore normal scrolling behavior
+      document.body.style.overflow = 'auto';
+    }
+  });
 </script>
 
 <div class="display-layout">

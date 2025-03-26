@@ -1,7 +1,9 @@
 <!-- src/routes/admin/+page.svelte -->
 <script>
   import { onMount } from 'svelte';
-  import { token } from '$lib/auth';
+  import { get } from 'svelte/store';
+  import { api } from '$lib/api';
+  import { tokenValidated, isTokenValidating } from '$lib/auth';
   
   // State variables
   let activeTab = 'approval';
@@ -26,6 +28,14 @@
     archived: null,
     users: null // Added error state for users
   };
+  
+  // Flag to track if initial data has been loaded
+  let dataInitialized = false;
+  let isInitialLoad = true;
+
+  // Track queued requests
+  let queuedFetchCount = 0;
+  let completedFetchCount = 0;
   
   // Drag and drop state
   let dragIndex = -1;
@@ -79,30 +89,140 @@
     }, duration);
   }
   
-  // Fetch pending media
+  // Initialize component
+  onMount(() => {
+    // Add keyboard event listener for modal closing
+    window.addEventListener('keydown', handleKeydown);
+    
+    // Check if we need to wait for token validation
+    if (get(isTokenValidating)) {
+      console.log('Token validation in progress, waiting before loading data');
+      // Render loading states immediately
+      loading = {
+        pending: true,
+        approved: true,
+        settings: true,
+        archived: true,
+        users: true
+      };
+    } else if (get(tokenValidated)) {
+      console.log('Token already validated, fetching admin data immediately');
+      loadAllData();
+      dataInitialized = true;
+    }
+    
+    // Set up subscription to token validation to load data when ready
+    const unsubscribe = tokenValidated.subscribe(validated => {
+      if (validated && !dataInitialized) {
+        console.log('Token validation completed, fetching admin data');
+        setTimeout(() => {
+          loadAllData();
+          dataInitialized = true;
+        }, 100); // Small delay to ensure queue processing has started
+      }
+    });
+    
+    return () => {
+      // Remove event listener when component is destroyed
+      window.removeEventListener('keydown', handleKeydown);
+      unsubscribe();
+    };
+  });
+  
+  // Load all data in sequence
+  async function loadAllData() {
+    try {
+      console.log('loadAllData called, isInitialLoad:', isInitialLoad);
+      
+      // Reset error states
+      error = {
+        pending: null,
+        approved: null,
+        settings: null,
+        archived: null,
+        users: null
+      };
+      
+      // Set loading states (if not already set)
+      if (!isInitialLoad) {
+        loading = {
+          pending: true,
+          approved: true,
+          settings: true,
+          archived: true,
+          users: true
+        };
+      }
+      
+      // Initial load is now complete
+      isInitialLoad = false;
+      
+      // Count how many fetch operations we're starting
+      queuedFetchCount = 5;
+      completedFetchCount = 0;
+      
+      // Fetch all data in parallel
+      await Promise.all([
+        fetchPendingMedia(),
+        fetchApprovedMedia(), 
+        fetchArchivedMedia(),
+        fetchSettings(),
+        fetchUsers()
+      ]);
+      
+      console.log('All admin data loaded successfully');
+    } catch (err) {
+      console.error('Error loading admin data:', err);
+    }
+  }
+  
+  // Helper to track fetch completion
+  function trackFetchComplete() {
+    completedFetchCount++;
+    console.log(`Fetch operation complete: ${completedFetchCount}/${queuedFetchCount}`);
+  }
+  
+  // Fetch pending media with additional logging
   async function fetchPendingMedia() {
     loading.pending = true;
     error.pending = null;
     
     try {
-      const response = await fetch('/api/media/pending', {
-        headers: {
-          'Authorization': `Bearer ${$token}`
-        }
-      });
+      console.log('Fetching pending media...');
+      const result = await api.get('/api/media/pending');
       
-      const result = await response.json();
+      // Force update to loading state to ensure UI reacts
+      loading = { ...loading, pending: false };
       
       if (result.success && result.data && result.data.media) {
         pendingMedia = result.data.media;
+        console.log(`Loaded ${pendingMedia.length} pending media items`);
+        
+        // Debug QR code information in media items
+        if (pendingMedia.length > 0) {
+          console.log("First media item detailed inspection:", 
+            JSON.stringify(pendingMedia[0], null, 2)
+          );
+        }
       } else {
         error.pending = result.message || 'Failed to load pending media';
+        console.error('Failed to load pending media:', result.message);
       }
     } catch (err) {
       console.error('Error fetching pending media:', err);
       error.pending = 'Error loading pending media';
+      // Force update to loading state
+      loading = { ...loading, pending: false };
     } finally {
-      loading.pending = false;
+      // Belt and suspenders - ensure loading state is updated
+      setTimeout(() => {
+        if (loading.pending) {
+          console.log('Force updating pending media loading state');
+          loading = { ...loading, pending: false };
+        }
+      }, 500);
+      
+      trackFetchComplete();
     }
   }
   
@@ -112,26 +232,36 @@
     error.approved = null;
     
     try {
-      const response = await fetch('/api/media/approved', {
-        headers: {
-          'Authorization': `Bearer ${$token}`
-        }
-      });
+      console.log('Fetching approved media...');
+      const data = await api.get('/api/media/approved');
       
-      const data = await response.json();
+      // Force update to loading state to ensure UI reacts
+      loading = { ...loading, approved: false };
       
       if (!data.success) {
         error.approved = data.message || 'Failed to load approved media';
+        console.error('Failed to load approved media:', data.message);
         return;
       }
       
       approvedMedia = data.data.media;
+      console.log(`Loaded ${approvedMedia.length} approved media items`);
       calculateTotalDuration();
     } catch (err) {
       console.error('Error fetching approved media:', err);
       error.approved = 'Error loading approved media';
+      // Force update to loading state
+      loading = { ...loading, approved: false };
     } finally {
-      loading.approved = false;
+      // Ensure loading state is updated
+      setTimeout(() => {
+        if (loading.approved) {
+          console.log('Force updating approved media loading state');
+          loading = { ...loading, approved: false };
+        }
+      }, 500);
+      
+      trackFetchComplete();
     }
   }
   
@@ -141,24 +271,34 @@
     error.archived = null;
     
     try {
-      const response = await fetch('/api/media/archived', {
-        headers: {
-          'Authorization': `Bearer ${$token}`
-        }
-      });
+      console.log('Fetching archived media...');
+      const result = await api.get('/api/media/archived');
       
-      const result = await response.json();
+      // Force update to loading state to ensure UI reacts
+      loading = { ...loading, archived: false };
       
       if (result.success && result.data && result.data.media) {
         archivedMedia = result.data.media;
+        console.log(`Loaded ${archivedMedia.length} archived media items`);
       } else {
         error.archived = result.message || 'Failed to load archived media';
+        console.error('Failed to load archived media:', result.message);
       }
     } catch (err) {
       console.error('Error fetching archived media:', err);
       error.archived = 'Error loading archived media';
+      // Force update to loading state
+      loading = { ...loading, archived: false };
     } finally {
-      loading.archived = false;
+      // Ensure loading state is updated
+      setTimeout(() => {
+        if (loading.archived) {
+          console.log('Force updating archived media loading state');
+          loading = { ...loading, archived: false };
+        }
+      }, 500);
+      
+      trackFetchComplete();
     }
   }
   
@@ -168,27 +308,37 @@
     error.settings = null;
     
     try {
-      const response = await fetch('/api/admin/settings', {
-        headers: {
-          'Authorization': `Bearer ${$token}`
-        }
-      });
+      console.log('Fetching settings...');
+      const result = await api.get('/api/admin/settings');
       
-      const result = await response.json();
+      // Force update to loading state to ensure UI reacts
+      loading = { ...loading, settings: false };
       
       if (result.success && result.data && result.data.settings) {
         settings = result.data.settings.reduce((acc, item) => {
           acc[item.key] = item.value;
           return acc;
         }, {});
+        console.log('Settings loaded successfully');
       } else {
         error.settings = result.message || 'Failed to load settings';
+        console.error('Failed to load settings:', result.message);
       }
     } catch (err) {
       console.error('Error fetching settings:', err);
       error.settings = 'Error loading settings';
+      // Force update to loading state
+      loading = { ...loading, settings: false };
     } finally {
-      loading.settings = false;
+      // Ensure loading state is updated
+      setTimeout(() => {
+        if (loading.settings) {
+          console.log('Force updating settings loading state');
+          loading = { ...loading, settings: false };
+        }
+      }, 500);
+      
+      trackFetchComplete();
     }
   }
   
@@ -208,14 +358,7 @@
       ];
       
       for (const setting of settingsToUpdate) {
-        const response = await fetch(`/api/admin/settings/${setting.key}`, {
-          method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${$token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ value: setting.value })
-        });
+        const response = await api.put(`/api/admin/settings/${setting.key}`, { value: setting.value });
         
         const result = await response.json();
         
@@ -239,12 +382,7 @@
   // Approve media item
   async function approveMedia(id) {
     try {
-      const response = await fetch(`/api/media/approve/${id}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${$token}`
-        }
-      });
+      const response = await api.post(`/api/media/approve/${id}`);
       
       const result = await response.json();
       
@@ -264,12 +402,7 @@
   // Reject media item
   async function rejectMedia(id) {
     try {
-      const response = await fetch(`/api/media/reject/${id}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${$token}`
-        }
-      });
+      const response = await api.post(`/api/media/reject/${id}`);
       
       const result = await response.json();
       
@@ -288,12 +421,7 @@
   // Delete media item
   async function deleteMedia(id) {
     try {
-      const response = await fetch(`/api/media/delete/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${$token}`
-        }
-      });
+      const response = await api.delete(`/api/media/delete/${id}`);
       
       const result = await response.json();
       
@@ -365,14 +493,7 @@
         metadata: JSON.stringify(metadata)
       };
       
-      const response = await fetch(`/api/media/update/${editingMedia.id}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${$token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(dataToSend)
-      });
+      const response = await api.put(`/api/media/update/${editingMedia.id}`, dataToSend);
       
       const result = await response.json();
       
@@ -467,14 +588,7 @@
         display_order: index + 1
       }));
       
-      const response = await fetch('/api/media/order', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${$token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ items })
-      });
+      const response = await api.post('/api/media/order', { items });
       
       const result = await response.json();
       
@@ -496,12 +610,7 @@
   // Archive media item
   async function archiveMediaItem(id) {
     try {
-      const response = await fetch(`/api/media/archive/${id}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${$token}`
-        }
-      });
+      const response = await api.post(`/api/media/archive/${id}`);
       
       const result = await response.json();
       
@@ -524,12 +633,7 @@
   // Restore media item from archive
   async function restoreMedia(id) {
     try {
-      const response = await fetch(`/api/media/restore/${id}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${$token}`
-        }
-      });
+      const response = await api.post(`/api/media/restore/${id}`);
       
       const result = await response.json();
       
@@ -562,39 +666,42 @@
     error.users = null;
     
     try {
-      const response = await fetch('/api/admin/users', {
-        headers: {
-          'Authorization': `Bearer ${$token}`
-        }
-      });
+      console.log('Fetching users...');
+      const data = await api.get('/api/admin/users');
       
-      const data = await response.json();
+      // Force update to loading state to ensure UI reacts
+      loading = { ...loading, users: false };
       
       if (!data.success) {
         error.users = data.message || 'Failed to load users';
+        console.error('Failed to load users:', data.message);
         return;
       }
       
       users = data.data.users;
+      console.log(`Loaded ${users.length} users`);
     } catch (err) {
       console.error('Error fetching users:', err);
       error.users = 'Error loading users';
+      // Force update to loading state
+      loading = { ...loading, users: false };
     } finally {
-      loading.users = false;
+      // Ensure loading state is updated
+      setTimeout(() => {
+        if (loading.users) {
+          console.log('Force updating users loading state');
+          loading = { ...loading, users: false };
+        }
+      }, 500);
+      
+      trackFetchComplete();
     }
   }
   
   // Update user role
   async function updateUserRole(userId, newRole) {
     try {
-      const response = await fetch(`/api/admin/users/${userId}/role`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${$token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ role: newRole })
-      });
+      const response = await api.put(`/api/admin/users/${userId}/role`, { role: newRole });
       
       const data = await response.json();
       
@@ -620,35 +727,113 @@
     }
   }
   
-  // Initialize component
-  onMount(() => {
-    fetchPendingMedia();
-    fetchApprovedMedia();
-    fetchArchivedMedia();
-    fetchSettings();
-    fetchUsers();
+  // Function to check if media has a QR code - updated to handle nested properties
+  function hasQrCode(media) {
+    console.log("Checking QR code availability for:", media);
     
-    // Add ESC key handler to close modals
-    const handleKeyDown = (event) => {
-      if (event.key === 'Escape') {
-        // Close any open modals
-        if (editingMedia) {
-          editingMedia = null;
-        } else if (showDeleteConfirm) {
-          showDeleteConfirm = false;
-        } else if (viewingMedia) {
-          viewingMedia = null;
+    if (!media) return false;
+    
+    // Look for QR code field at the top level
+    if (media.qr_code_url && media.qr_code_url.trim() !== '') return true;
+    if (media.qr_code && media.qr_code.trim() !== '') return true;
+    if (media.qrcode_url && media.qrcode_url.trim() !== '') return true;
+    if (media.qrcode && media.qrcode.trim() !== '') return true;
+    if (media.qr_code_path && media.qr_code_path.trim() !== '') return true;
+    
+    // Check if the QR code is in a nested property
+    if (media.metadata) {
+      let metadata = media.metadata;
+      
+      // If metadata is a string, try to parse it as JSON
+      if (typeof metadata === 'string') {
+        try {
+          metadata = JSON.parse(metadata);
+        } catch (e) {
+          console.error('Error parsing metadata:', e);
         }
       }
-    };
+      
+      // Check QR fields in metadata
+      if (metadata.qr_code_url && metadata.qr_code_url.trim() !== '') return true;
+      if (metadata.qr_code && metadata.qr_code.trim() !== '') return true;
+      if (metadata.qrcode_url && metadata.qrcode_url.trim() !== '') return true;
+      if (metadata.qrcode && metadata.qrcode.trim() !== '') return true;
+    }
     
-    document.addEventListener('keydown', handleKeyDown);
+    return false;
+  }
+  
+  // Function to get QR code URL from media object
+  function getQrCodeUrl(media) {
+    if (!media) return '';
     
-    // Cleanup on unmount
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  });
+    // Look for QR code field at the top level
+    if (media.qr_code_url && media.qr_code_url.trim() !== '') return media.qr_code_url;
+    if (media.qr_code && media.qr_code.trim() !== '') return media.qr_code;
+    if (media.qrcode_url && media.qrcode_url.trim() !== '') return media.qrcode_url;
+    if (media.qrcode && media.qrcode.trim() !== '') return media.qrcode;
+    if (media.qr_code_path && media.qr_code_path.trim() !== '') return media.qr_code_path;
+    
+    // Check if the QR code is in a nested property
+    if (media.metadata) {
+      let metadata = media.metadata;
+      
+      // If metadata is a string, try to parse it as JSON
+      if (typeof metadata === 'string') {
+        try {
+          metadata = JSON.parse(metadata);
+        } catch (e) {
+          console.error('Error parsing metadata:', e);
+          return '';
+        }
+      }
+      
+      // Check QR fields in metadata
+      if (metadata.qr_code_url && metadata.qr_code_url.trim() !== '') return metadata.qr_code_url;
+      if (metadata.qr_code && metadata.qr_code.trim() !== '') return metadata.qr_code;
+      if (metadata.qrcode_url && metadata.qrcode_url.trim() !== '') return metadata.qrcode_url;
+      if (metadata.qrcode && metadata.qrcode.trim() !== '') return metadata.qrcode;
+    }
+    
+    return '';
+  }
+  
+  // Function to view QR code - updated to use getQrCodeUrl
+  function viewQrCode(media) {
+    console.log("Attempting to view QR code for:", media);
+    if (hasQrCode(media)) {
+      const qrCodeUrl = getQrCodeUrl(media);
+      console.log("QR code URL:", qrCodeUrl);
+      
+      // Use the viewingMedia variable to show the QR code in the media viewer modal
+      viewingMedia = {
+        ...media,
+        viewing_qr_code: true,
+        original_file_url: media.file_url,  // Save original file URL
+        original_file_type: media.file_type, // Save original file type
+        file_url: qrCodeUrl,
+        title: media.title,
+        file_type: 'image/png'
+      };
+    } else {
+      console.error("No QR code URL available for media:", media);
+    }
+  }
+  
+  // Handle escape key to close modals
+  function handleKeydown(event) {
+    if (event.key === 'Escape') {
+      // Close active modals
+      if (viewingMedia) {
+        viewingMedia = null;
+      } else if (editingMedia) {
+        editingMedia = null;
+      } else if (showDeleteConfirm) {
+        showDeleteConfirm = false;
+        mediaToDelete = null;
+      }
+    }
+  }
 </script>
 
 <svelte:head>
@@ -712,6 +897,7 @@
         {:else if pendingMedia.length === 0}
           <div class="empty">No pending media to approve.</div>
         {:else}
+          
           <div class="media-list">
             {#each pendingMedia as media (media.id)}
               <div class="media-item">
@@ -733,12 +919,26 @@
                       <span class="duration">Duration: {media.duration || 10}s</span>
                     {/if}
                     <span class="uploader">By: {media.uploaded_by}</span>
+                    
+                    <!-- Add QR Code badge if available -->
+                    {#if hasQrCode(media)}
+                      <span class="qr-code-badge" on:click={() => viewQrCode(media)}>
+                        <span class="qr-icon">🔳</span> QR Code
+                      </span>
+                    {/if}
                   </p>
                 </div>
                 <div class="media-actions">
                   <button class="approve-btn" on:click={() => approveMedia(media.id)}>Approve</button>
                   <button class="reject-btn" on:click={() => rejectMedia(media.id)}>Reject</button>
                   <button class="edit-btn" on:click={() => showEditForm(media)}>Edit</button>
+                  
+                  <!-- QR Code button if available -->
+                  {#if hasQrCode(media)}
+                    <button class="qr-btn" on:click={() => viewQrCode(media)}>
+                      View QR
+                    </button>
+                  {/if}
                 </div>
               </div>
             {/each}
@@ -827,12 +1027,20 @@
                       {#if media.approved_by_username}
                         <span class="approver">Approved by: {media.approved_by_username}</span>
                       {/if}
+                      
+                      <!-- Add QR Code badge if available -->
+                      {#if hasQrCode(media)}
+                        <span class="qr-code-badge" on:click={() => viewQrCode(media)}>
+                          <span class="qr-icon">🔳</span> QR Code
+                        </span>
+                      {/if}
                     </p>
                   </div>
                   <div class="media-actions">
                     <button class="edit-btn" on:click={() => showEditForm(media)}>Edit</button>
                     <button class="delete-btn" on:click={() => confirmDelete(media)}>Delete</button>
                     <button class="archive-btn" on:click={() => archiveMediaItem(media.id)}>Archive</button>
+
                   </div>
                 </div>
               {/each}
@@ -866,12 +1074,20 @@
                       {#if media.approved_by_username}
                         <span class="approver">Approved by: {media.approved_by_username}</span>
                       {/if}
+                      
+                      <!-- Add QR Code badge if available -->
+                      {#if hasQrCode(media)}
+                        <span class="qr-code-badge" on:click={() => viewQrCode(media)}>
+                          <span class="qr-icon">🔳</span> QR Code
+                        </span>
+                      {/if}
                     </p>
                   </div>
                   <div class="media-actions">
                     <button class="edit-btn" on:click={() => showEditForm(media)}>Edit</button>
                     <button class="delete-btn" on:click={() => confirmDelete(media)}>Delete</button>
                     <button class="archive-btn" on:click={() => archiveMediaItem(media.id)}>Archive</button>
+
                   </div>
                 </div>
               {/each}
@@ -1152,50 +1368,66 @@
     </div>
   {/if}
   
-  <!-- View Media Modal -->
+  <!-- Media Viewer Modal -->
   {#if viewingMedia}
-    <div class="modal-overlay fullscreen">
-      <div class="modal-fullscreen">
+    <div class="modal-overlay" on:click|self={() => viewingMedia = null}>
+      <div class="modal-container">
         <div class="modal-header">
-          <h2>{viewingMedia.title || 'Untitled'}</h2>
+          <h2>{viewingMedia.viewing_qr_code ? 'QR Code for: ' + viewingMedia.title : viewingMedia.title || 'Untitled'}</h2>
           <button class="close-btn" on:click={() => viewingMedia = null}>×</button>
         </div>
         <div class="modal-body">
-          <div class="fullscreen-preview">
-            {#if viewingMedia.file_type === 'image' || viewingMedia.file_type.startsWith('image/')}
-              <img src={viewingMedia.file_url} alt={viewingMedia.title} />
-            {:else if viewingMedia.file_type === 'video' || viewingMedia.file_type.startsWith('video/')}
-              <video src={viewingMedia.file_url} controls autoplay></video>
-            {:else}
-              <div class="unknown-media">{viewingMedia.file_type}</div>
-            {/if}
-          </div>
-          
-          <div class="media-info">
-            <h3>{viewingMedia.title || 'Untitled'}</h3>
-            <p class="description">{viewingMedia.description || 'No description'}</p>
-            <p class="metadata">
-              <span class="type">Type: {viewingMedia.file_type}</span>
+          <div class="modal-content">
+            <div class="modal-preview">
               {#if viewingMedia.file_type === 'image' || viewingMedia.file_type.startsWith('image/')}
-                <span class="duration">Duration: {viewingMedia.duration || 10}s</span>
+                <img src={viewingMedia.file_url} alt={viewingMedia.title} />
               {:else if viewingMedia.file_type === 'video' || viewingMedia.file_type.startsWith('video/')}
-                <span class="duration">Duration: {viewingMedia.duration ? `${viewingMedia.duration}s` : 'Unknown'}</span>
+                <video src={viewingMedia.file_url} controls autoplay></video>
+              {:else}
+                <div class="unknown-media">{viewingMedia.file_type}</div>
               {/if}
-              <span class="uploader">By: {viewingMedia.uploaded_by}</span>
-              {#if viewingMedia.approved_by_username}
-                <span class="approver">Approved by: {viewingMedia.approved_by_username}</span>
-              {/if}
-            </p>
+            </div>
             
-            <div class="modal-actions">
-              {#if viewingMedia.status === 'pending'}
-                <button class="approve-btn" on:click={() => { approveMedia(viewingMedia.id); viewingMedia = null; }}>Approve</button>
-                <button class="reject-btn" on:click={() => { rejectMedia(viewingMedia.id); viewingMedia = null; }}>Reject</button>
+            <div class="media-info">
+              {#if !viewingMedia.viewing_qr_code}
+                <h3>{viewingMedia.title || 'Untitled'}</h3>
+                <p class="description">{viewingMedia.description || 'No description'}</p>
+                <p class="metadata">
+                  <span class="type">Type: {viewingMedia.file_type}</span>
+                  {#if viewingMedia.file_type === 'image' || viewingMedia.file_type.startsWith('image/')}
+                    <span class="duration">Duration: {viewingMedia.duration || 10}s</span>
+                  {:else if viewingMedia.file_type === 'video' || viewingMedia.file_type.startsWith('video/')}
+                    <span class="duration">Duration: {viewingMedia.duration ? `${viewingMedia.duration}s` : 'Unknown'}</span>
+                  {/if}
+                  <span class="uploader">By: {viewingMedia.uploaded_by}</span>
+                  {#if viewingMedia.approved_by_username}
+                    <span class="approver">Approved by: {viewingMedia.approved_by_username}</span>
+                  {/if}
+                </p>
               {/if}
-              <button class="edit-btn" on:click={() => { showEditForm(viewingMedia); viewingMedia = null; }}>Edit</button>
-              {#if viewingMedia.status === 'approved'}
-                <button class="delete-btn" on:click={() => { confirmDelete(viewingMedia); viewingMedia = null; }}>Delete</button>
-              {/if}
+              
+              <div class="modal-actions">
+                {#if !viewingMedia.viewing_qr_code && hasQrCode(viewingMedia)}
+                  <button class="btn-secondary" on:click={() => viewQrCode(viewingMedia)}>
+                    View QR Code
+                  </button>
+                {:else if viewingMedia.viewing_qr_code}
+                  <button class="btn-secondary" on:click={() => viewingMedia = {...viewingMedia, viewing_qr_code: false, file_url: viewingMedia.original_file_url || viewingMedia.file_url, file_type: viewingMedia.original_file_type || viewingMedia.file_type}}>
+                    View Media
+                  </button>
+                {/if}
+
+                {#if viewingMedia.status === 'pending' && !viewingMedia.viewing_qr_code}
+                  <button class="approve-btn" on:click={() => { approveMedia(viewingMedia.id); viewingMedia = null; }}>Approve</button>
+                  <button class="reject-btn" on:click={() => { rejectMedia(viewingMedia.id); viewingMedia = null; }}>Reject</button>
+                {/if}
+                {#if !viewingMedia.viewing_qr_code}
+                  <button class="edit-btn" on:click={() => { showEditForm(viewingMedia); viewingMedia = null; }}>Edit</button>
+                {/if}
+                {#if viewingMedia.status === 'approved' && !viewingMedia.viewing_qr_code}
+                  <button class="delete-btn" on:click={() => { confirmDelete(viewingMedia); viewingMedia = null; }}>Delete</button>
+                {/if}
+              </div>
             </div>
           </div>
         </div>
@@ -1388,16 +1620,22 @@
     overflow: hidden;
     background-color: #000;
     flex-shrink: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
   }
   
   .media-preview.small {
-    width: 100px;
-    height: 60px;
+    width: 120px;
+    height: 80px;
   }
   
   .media-card .media-preview {
     width: 100%;
     height: 180px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
   }
   
   .media-preview img, .media-preview video {
@@ -1577,27 +1815,23 @@
     position: fixed;
     top: 0;
     left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: rgba(0, 0, 0, 0.5);
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
     display: flex;
     justify-content: center;
     align-items: center;
-    z-index: 100;
+    z-index: 9999;
   }
   
-  .modal {
+  .modal-container {
     background-color: white;
     border-radius: 8px;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-    width: 100%;
-    max-width: 600px;
+    width: 90%;
+    max-width: 800px;
     max-height: 90vh;
     overflow-y: auto;
-  }
-  
-  .modal.confirmation {
-    max-width: 400px;
   }
   
   .modal-header {
@@ -1611,6 +1845,7 @@
   .modal-header h2 {
     margin: 0;
     font-size: 1.5rem;
+    color: #333;
   }
   
   .close-btn {
@@ -1625,314 +1860,106 @@
     padding: 1.5rem;
   }
   
-  .form-group {
-    margin-bottom: 1.5rem;
-  }
-  
-  .form-group label {
-    display: block;
-    margin-bottom: 0.5rem;
-    font-weight: 500;
-  }
-  
-  .form-group input, .form-group textarea {
-    width: 100%;
-    padding: 0.75rem;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-size: 1rem;
-  }
-  
-  .form-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 1rem;
-    margin-top: 1.5rem;
-  }
-  
-  /* Checkbox styles */
-  .checkbox-group {
+  .modal-content {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
-    margin-top: 0.5rem;
+    width: 100%;
   }
   
-  .checkbox-label {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    cursor: pointer;
-  }
-  
-  .checkbox-label input[type="checkbox"] {
-    width: auto;
-    margin: 0;
-  }
-  
-  .warning {
-    color: #c62828;
-    font-weight: 500;
-  }
-  
-  .fullscreen-preview {
+  .modal-preview {
     display: flex;
     justify-content: center;
     align-items: center;
-    max-height: 70vh;
-    margin-bottom: 1rem;
+    margin-bottom: 1.5rem;
+    background-color: #000;
+    border-radius: 4px;
     overflow: hidden;
+    width: 100%;
   }
   
-  .fullscreen-preview img {
+  .modal-preview img,
+  .modal-preview video {
     max-width: 100%;
-    max-height: 70vh;
+    max-height: 50vh;
     object-fit: contain;
   }
   
-  .fullscreen-preview video {
-    max-width: 100%;
-    max-height: 70vh;
-  }
-  
-  .modal-fullscreen {
-    width: 90%;
-    max-width: 1200px;
-    max-height: 90vh;
-    background: white;
-    border-radius: 8px;
-    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-    overflow-y: auto;
-  }
-  
   .media-info {
-    padding: 1rem;
+    width: 100%;
+    padding: 0;
+    color: #333;
+  }
+  
+  .media-info h3 {
+    margin-top: 0;
+    margin-bottom: 1rem;
+    color: #333;
+  }
+  
+  .media-info .description {
+    margin-bottom: 1rem;
+    color: #555;
   }
   
   .modal-actions {
     display: flex;
     gap: 0.5rem;
     margin-top: 1rem;
+    flex-wrap: wrap;
   }
   
-  /* Make images and videos clickable */
-  .media-preview img,
-  .media-preview video {
-    cursor: pointer;
-  }
-  
-  .duration-info {
-    background-color: #f5f5f5;
-    padding: 1rem;
-    border-radius: 4px;
-    margin-bottom: 1rem;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-  }
-  
-  .duration-info h3 {
-    margin: 0 0 0.5rem 0;
-    color: #1976d2;
-  }
-  
-  .duration-info p {
-    margin: 0;
-    font-size: 1.2rem;
-    font-weight: 500;
-  }
-  
-  .approver {
-    margin-left: 0.5rem;
-    padding: 0.1rem 0.5rem;
-    background-color: #e3f2fd;
-    border-radius: 3px;
-    font-size: 0.85rem;
-    color: #0d47a1;
-  }
-  
-  /* Toast Notification Styles */
-  .toast-notification {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    padding: 0.75rem 1rem;
-    border-radius: 4px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-    z-index: 1000;
-    min-width: 200px;
-    max-width: 400px;
-    animation: slideIn 0.3s ease-out forwards;
-  }
-  
-  @keyframes slideIn {
-    from { transform: translateX(100%); opacity: 0; }
-    to { transform: translateX(0); opacity: 1; }
-  }
-  
-  .toast-notification.success {
-    background-color: #43a047;
+  .btn-secondary {
+    background-color: #607d8b;
     color: white;
-  }
-  
-  .toast-notification.error {
-    background-color: #e53935;
-    color: white;
-  }
-  
-  .toast-notification.info {
-    background-color: #1976d2;
-    color: white;
-  }
-  
-  .toast-content {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-  
-  .toast-message {
-    flex: 1;
-  }
-  
-  .toast-close {
-    background: none;
     border: none;
-    color: white;
-    font-size: 1.2rem;
-    cursor: pointer;
-    margin-left: 0.5rem;
-    opacity: 0.8;
-  }
-  
-  .toast-close:hover {
-    opacity: 1;
-  }
-  
-  .archive-btn {
-    background-color: #ff9800;
-    color: white;
+    border-radius: 4px;
     padding: 0.5rem 1rem;
-    border: none;
-    border-radius: 4px;
     cursor: pointer;
     font-size: 0.9rem;
-    text-align: center;
-    width: 100%;
   }
   
-  .restore-btn {
-    background-color: #8bc34a;
-    color: white;
-    padding: 0.5rem 1rem;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 0.9rem;
-    text-align: center;
-    width: 100%;
+  .btn-secondary:hover {
+    background-color: #455a64;
   }
   
-  .archiver {
-    margin-left: 0.5rem;
-    padding: 0.1rem 0.5rem;
-    background-color: #fff3e0;
-    border-radius: 3px;
-    font-size: 0.85rem;
-    color: #e65100;
-  }
-  
-  .archive-date {
-    margin-left: 0.5rem;
-    padding: 0.1rem 0.5rem;
-    background-color: #f1f1f1;
-    border-radius: 3px;
-    font-size: 0.85rem;
-    color: #616161;
-  }
-  
-  .users-table-container {
-    max-width: 800px;
-    margin: 0 auto;
-  }
-  
-  .users-table {
-    width: 100%;
-    border-collapse: collapse;
-  }
-  
-  .users-table th, .users-table td {
-    padding: 0.75rem;
-    text-align: left;
-  }
-  
-  .users-table th {
-    background-color: #f5f5f5;
-  }
-  
-  .role-badge {
-    padding: 0.25rem 0.5rem;
-    border-radius: 4px;
-    font-size: 0.85rem;
-  }
-  
-  .role-badge.role-student {
-    background-color: #e3f2fd;
-    color: #0d47a1;
-  }
-  
-  .role-badge.role-faculty {
-    background-color: #fff9c4;
-    color: #f57f17;
-  }
-  
-  .role-badge.role-admin {
-    background-color: #ffebee;
-    color: #c62828;
-  }
-  
-  .role-actions {
-    display: flex;
-    gap: 0.5rem;
-  }
-  
-  .role-select {
-    padding: 0.5rem;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-  }
-  
-  .loading-spinner {
-    display: flex;
-    flex-direction: column;
+  .qr-code-badge {
+    display: inline-flex;
     align-items: center;
-    justify-content: center;
-    padding: 2rem;
-  }
-  
-  .spinner {
-    width: 40px;
-    height: 40px;
-    border: 4px solid rgba(0, 0, 0, 0.1);
-    border-top: 4px solid #1976d2;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-    margin-bottom: 1rem;
-  }
-  
-  @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-  }
-  
-  .empty-state {
-    padding: 2rem;
-    text-align: center;
-  }
-
-  .order-number {
-    color: #616161;
+    background-color: #3f51b5;
+    color: white;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.8em;
+    cursor: pointer;
+    margin-left: 8px;
     font-weight: bold;
-    padding: 0.0rem 0.5rem;
+  }
+  
+  .qr-code-badge:hover {
+    background-color: #303f9f;
+  }
+  
+  .qr-icon {
+    margin-right: 4px;
+  }
+  
+  .qr-btn {
+    background-color: #3f51b5;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 10px;
+    cursor: pointer;
+    font-weight: bold;
+  }
+  
+  .debug-info {
+    background-color: #fff3cd;
+    border: 1px solid #ffeeba;
+    border-radius: 4px;
+    padding: 10px;
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+    color: #856404;
   }
 </style>

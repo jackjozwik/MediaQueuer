@@ -117,6 +117,9 @@
 		fetchMedia();
 		hideIndicatorAfterDelay();
 
+		// Add keyboard event listener
+		window.addEventListener('keydown', handleKeydown);
+
 		// Refresh the media list every 5 minutes
 		const mediaRefreshInterval = setInterval(
 			() => {
@@ -127,6 +130,7 @@
 		);
 
 		return () => {
+			window.removeEventListener('keydown', handleKeydown);
 			clearInterval(mediaRefreshInterval);
 			if (refreshInterval) clearTimeout(refreshInterval);
 			if (indicatorTimeout) {
@@ -177,24 +181,63 @@
 		console.log('Current item QR code:', currentItem.qr_code);
 	}
 
-	// Toggle debug view with Ctrl+Alt+D
+	// Handle keyboard controls
 	function handleKeydown(event) {
+		// Debug toggle with Ctrl+Alt+D
 		if (event.ctrlKey && event.altKey && event.key === 'd') {
 			showDebug = !showDebug;
+			return;
+		}
+		
+		// Only in individual display mode (not sync mode)
+		if (window.location.pathname === '/display' || window.location.pathname === '/display/') {
+			// Left arrow: go to previous media
+			if (event.key === 'ArrowLeft') {
+				event.preventDefault();
+				showPreviousMedia();
+			}
+			
+			// Right arrow: go to next media
+			else if (event.key === 'ArrowRight') {
+				event.preventDefault();
+				advanceMedia();
+			}
+			
+			// Space: toggle play/pause for videos
+			else if (event.key === ' ' && isVideo && mediaElement) {
+				event.preventDefault();
+				togglePlayPause();
+			}
 		}
 	}
-
-	onMount(() => {
-		// Add keydown listener for debug toggle
-		window.addEventListener('keydown', handleKeydown);
-
-		// ...existing onMount code...
-
-		return () => {
-			window.removeEventListener('keydown', handleKeydown);
-			// ...existing cleanup code...
-		};
-	});
+	
+	// Go to previous media item
+	function showPreviousMedia() {
+		if (mediaItems.length === 0) return;
+		
+		// Clear any existing timers
+		if (refreshInterval) {
+			clearTimeout(refreshInterval);
+		}
+		
+		// Calculate previous index with wrap-around
+		const prevIndex = (currentIndex - 1 + mediaItems.length) % mediaItems.length;
+		console.log(`Going to previous item: ${prevIndex} of ${mediaItems.length}`);
+		showMedia(prevIndex);
+	}
+	
+	// Toggle play/pause for videos
+	function togglePlayPause() {
+		if (!mediaElement) return;
+		
+		if (mediaElement.paused) {
+			mediaElement.play();
+			isPlaying = true;
+		} else {
+			mediaElement.pause();
+			isPlaying = false;
+		}
+	}
 
 	function hideIndicatorAfterDelay() {
 		if (indicatorTimeout) {
@@ -206,54 +249,6 @@
 		indicatorTimeout = setTimeout(() => {
 			showIndicator = false;
 		}, 5000);
-	}
-
-	// Add playback control functions
-	function togglePlayPause() {
-		isPlaying = !isPlaying;
-		
-		if (isPlaying) {
-			// Resume playback
-			if (isVideo && mediaElement) {
-				mediaElement.play();
-			} else {
-				// For images, start a new timer
-				const duration = currentItem?.duration ? parseInt(currentItem.duration) * 1000 : 10000;
-				refreshInterval = setTimeout(() => advanceMedia(), duration);
-			}
-		} else {
-			// Pause playback
-			if (isVideo && mediaElement) {
-				mediaElement.pause();
-			}
-			// Clear any existing timers
-			if (refreshInterval) {
-				clearTimeout(refreshInterval);
-			}
-		}
-	}
-	
-	function goToPrevious() {
-		if (mediaItems.length === 0) return;
-		
-		// Clear any existing timers
-		if (refreshInterval) {
-			clearTimeout(refreshInterval);
-		}
-		
-		const prevIndex = (currentIndex - 1 + mediaItems.length) % mediaItems.length;
-		showMedia(prevIndex);
-	}
-	
-	function goToNext() {
-		if (mediaItems.length === 0) return;
-		
-		// Clear any existing timers
-		if (refreshInterval) {
-			clearTimeout(refreshInterval);
-		}
-		
-		advanceMedia();
 	}
 </script>
 
@@ -339,7 +334,7 @@
 
 <!-- Playback controls -->
 <div class="playback-controls">
-  <button class="control-btn prev-btn" on:click={goToPrevious} title="Previous">
+  <button class="control-btn prev-btn" on:click={showPreviousMedia} title="Previous">
     <svg viewBox="0 0 24 24" width="24" height="24">
       <path fill="currentColor" d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
     </svg>
@@ -357,7 +352,7 @@
     {/if}
   </button>
   
-  <button class="control-btn next-btn" on:click={goToNext} title="Next">
+  <button class="control-btn next-btn" on:click={advanceMedia} title="Next">
     <svg viewBox="0 0 24 24" width="24" height="24">
       <path fill="currentColor" d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
     </svg>

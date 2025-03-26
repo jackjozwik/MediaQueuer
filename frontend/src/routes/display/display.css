@@ -13,7 +13,7 @@ html, body {
 }
 
 /* Fix for the media info panel */
-.media-info {
+.media-info:not(.modal-body .media-info) {
   position: absolute !important;
   bottom: 30px !important;
   left: 30px !important;
@@ -23,16 +23,25 @@ html, body {
   padding: 1rem !important;
 }
 
-.media-info h2 {
+.media-info:not(.modal-body .media-info) h2 {
   font-size: 1.8rem !important;
   font-weight: 700 !important;
   margin-top: 0 !important;
+  color: white !important;
 }
 
-.description {
+.media-info:not(.modal-body .media-info) .description {
   font-size: 1.1rem !important;
+  color: white !important;
 }
 
-.creator {
+.media-info:not(.modal-body .media-info) .creator {
   opacity: 0.9 !important;
+  color: white !important;
+}
+
+/* Reset modal styles to ensure they look correct */
+.modal-overlay,
+.modal-backdrop {
+  z-index: 10000 !important;
 }

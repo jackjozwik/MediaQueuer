@@ -234,172 +234,179 @@
   <title>Upload Media - TV Media Queuer</title>
 </svelte:head>
 
-<div class="upload-container">
-  <div class="card upload-card">
-    <div class="card-header">
-      <h1>Upload Media</h1>
-      <p class="subtitle">Upload content to be displayed on the hallway TVs</p>
-    </div>
-    
-    {#if error}
-      <div class="alert alert-error">
-        {error}
-      </div>
-    {/if}
-    
-    {#if success}
-      <div class="alert alert-success">
-        {success}
-      </div>
-    {/if}
-    
-    <form on:submit|preventDefault={handleSubmit}>
-      <div class="form-group">
-        <label for="file">Select or Drop File</label>
-        <div 
-          class="drop-zone" 
-          on:dragover={handleDragOver} 
-          on:dragleave={handleDragLeave} 
-          on:drop={handleDrop}
-        >
-          <input 
-            type="file" 
-            id="file" 
-            accept="image/*,video/*" 
-            on:change={handleFileChange}
-            disabled={uploading}
-            class="file-input"
-          />
-          <div class="drop-message">
-            <div class="icon">
-              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="17 8 12 3 7 8"></polyline>
-                <line x1="12" y1="3" x2="12" y2="15"></line>
-              </svg>
-            </div>
-            <p>Drag and drop your file here or click to select</p>
-          </div>
-        </div>
-        <div class="help-text">Supported formats: Images (JPG, PNG, GIF) and Videos (MP4, WebM)</div>
+<div class="upload-page">
+  <div class="upload-container">
+    <div class="card upload-card">
+      <div class="card-header">
+        <h1>Upload Media</h1>
+        <p class="subtitle">Upload content to be displayed on the hallway TVs</p>
       </div>
       
-      {#if previewUrl}
-        <div class="preview">
-          {#if isImage}
-            <img src={previewUrl} alt="Preview" />
-          {:else if isVideo}
-            <video src={previewUrl} controls muted></video>
-          {/if}
+      {#if error}
+        <div class="alert alert-error">
+          {error}
         </div>
       {/if}
       
-      <div class="form-group">
-        <label for="title">Title</label>
-        <input 
-          type="text" 
-          id="title" 
-          bind:value={title}
-          disabled={uploading}
-          maxlength={TITLE_MAX_LENGTH}
-          required
-        />
-        <div class="character-counter {titleExceeded ? 'exceeded' : ''}">
-          {titleCharactersLeft} characters left
+      {#if success}
+        <div class="alert alert-success">
+          {success}
         </div>
-      </div>
+      {/if}
       
-      <div class="form-group">
-        <label for="description">Description (optional)</label>
-        <textarea 
-          id="description" 
-          bind:value={description}
-          rows="3"
-          disabled={uploading}
-          maxlength={DESCRIPTION_MAX_LENGTH}
-        ></textarea>
-        <div class="character-counter {descriptionExceeded ? 'exceeded' : ''}">
-          {descriptionCharactersLeft} characters left
-        </div>
-      </div>
-      
-      <!-- QR Code Section -->
-      <div class="form-group qr-code-section">
-        <h2 class="section-title">QR Code (Optional)</h2>
-        <div class="qr-code-container">
-          <div class="qr-code-preview-area">
-            {#if qrCodePreviewUrl}
-              <img src={qrCodePreviewUrl} alt="QR Code Preview" class="qr-code-preview" />
-            {:else}
-              <div class="qr-code-placeholder">
-                <div class="icon">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                    <rect x="7" y="7" width="3" height="3"></rect>
-                    <rect x="14" y="7" width="3" height="3"></rect>
-                    <rect x="7" y="14" width="3" height="3"></rect>
-                    <rect x="14" y="14" width="3" height="3"></rect>
-                  </svg>
-                </div>
-                <p>No QR code selected</p>
-              </div>
-            {/if}
-          </div>
-          
-          <div class="qr-code-controls">
+      <form on:submit|preventDefault={handleSubmit}>
+        <div class="form-group">
+          <label for="file">Select or Drop File</label>
+          <div 
+            class="drop-zone" 
+            on:dragover={handleDragOver} 
+            on:dragleave={handleDragLeave} 
+            on:drop={handleDrop}
+          >
             <input 
               type="file" 
-              id="qrCode" 
-              accept="image/*" 
-              on:change={handleQRCodeChange}
+              id="file" 
+              accept="image/*,video/*" 
+              on:change={handleFileChange}
               disabled={uploading}
-              class="qr-file-input"
-              style="display: none;"
+              class="file-input"
             />
-            <button 
-              type="button" 
-              class="btn-secondary qr-button" 
-              on:click={() => document.getElementById('qrCode').click()} 
-              disabled={uploading}
-            >
-              Select QR Code
-            </button>
-            
-            {#if qrCodeFile}
-              <button 
-                type="button" 
-                class="btn-outline btn-danger" 
-                on:click={clearQRCode} 
-                disabled={uploading}
-              >
-                Clear
-              </button>
+            <div class="drop-message">
+              <div class="icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="17 8 12 3 7 8"></polyline>
+                  <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+              </div>
+              <p>Drag and drop your file here or click to select</p>
+            </div>
+          </div>
+          <div class="help-text">Supported formats: Images (JPG, PNG, GIF) and Videos (MP4, WebM)</div>
+        </div>
+        
+        {#if previewUrl}
+          <div class="preview">
+            {#if isImage}
+              <img src={previewUrl} alt="Preview" />
+            {:else if isVideo}
+              <video src={previewUrl} controls muted></video>
             {/if}
           </div>
+        {/if}
+        
+        <div class="form-group">
+          <label for="title">Title</label>
+          <input 
+            type="text" 
+            id="title" 
+            bind:value={title}
+            disabled={uploading}
+            maxlength={TITLE_MAX_LENGTH}
+            required
+          />
+          <div class="character-counter {titleExceeded ? 'exceeded' : ''}">
+            {titleCharactersLeft} characters left
+          </div>
         </div>
-        <div class="help-text">
-          Upload a QR code to link to your portfolio, website, or social media. This will be displayed alongside your content.
+        
+        <div class="form-group">
+          <label for="description">Description (optional)</label>
+          <textarea 
+            id="description" 
+            bind:value={description}
+            rows="3"
+            disabled={uploading}
+            maxlength={DESCRIPTION_MAX_LENGTH}
+          ></textarea>
+          <div class="character-counter {descriptionExceeded ? 'exceeded' : ''}">
+            {descriptionCharactersLeft} characters left
+          </div>
         </div>
-      </div>
-      
-      <div class="form-actions">
-        <button type="submit" class="btn-primary" disabled={uploading}>
-          {#if uploading}
-            <span class="loading-spinner"></span>
-            Uploading...
-          {:else}
-            Upload Media
-          {/if}
-        </button>
-        <button type="button" class="btn-secondary" on:click={resetForm} disabled={uploading}>
-          Clear Form
-        </button>
-      </div>
-    </form>
+        
+        <!-- QR Code Section -->
+        <div class="form-group qr-code-section">
+          <h2 class="section-title">QR Code (Optional)</h2>
+          <div class="qr-code-container">
+            <div class="qr-code-preview-area">
+              {#if qrCodePreviewUrl}
+                <img src={qrCodePreviewUrl} alt="QR Code Preview" class="qr-code-preview" />
+              {:else}
+                <div class="qr-code-placeholder">
+                  <div class="icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                      <rect x="7" y="7" width="3" height="3"></rect>
+                      <rect x="14" y="7" width="3" height="3"></rect>
+                      <rect x="7" y="14" width="3" height="3"></rect>
+                      <rect x="14" y="14" width="3" height="3"></rect>
+                    </svg>
+                  </div>
+                  <p>No QR code selected</p>
+                </div>
+              {/if}
+            </div>
+            
+            <div class="qr-code-controls">
+              <input 
+                type="file" 
+                id="qrCode" 
+                accept="image/*" 
+                on:change={handleQRCodeChange}
+                disabled={uploading}
+                class="qr-file-input"
+                style="display: none;"
+              />
+              <button 
+                type="button" 
+                class="btn-secondary qr-button" 
+                on:click={() => document.getElementById('qrCode').click()} 
+                disabled={uploading}
+              >
+                Select QR Code
+              </button>
+              
+              {#if qrCodeFile}
+                <button 
+                  type="button" 
+                  class="btn-outline btn-danger" 
+                  on:click={clearQRCode} 
+                  disabled={uploading}
+                >
+                  Clear
+                </button>
+              {/if}
+            </div>
+          </div>
+          <div class="help-text">
+            Upload a QR code to link to your portfolio, website, or social media. This will be displayed alongside your content.
+          </div>
+        </div>
+        
+        <div class="form-actions">
+          <button type="submit" class="btn-primary" disabled={uploading}>
+            {#if uploading}
+              <span class="loading-spinner"></span>
+              Uploading...
+            {:else}
+              Upload Media
+            {/if}
+          </button>
+          <button type="button" class="btn-secondary" on:click={resetForm} disabled={uploading}>
+            Clear Form
+          </button>
+        </div>
+      </form>
+    </div>
   </div>
 </div>
 
 <style>
+  .upload-page {
+    max-width: 100%;
+    padding-bottom: var(--space-10);
+  }
+  
   .upload-container {
     max-width: 800px;
     margin: 0 auto;
