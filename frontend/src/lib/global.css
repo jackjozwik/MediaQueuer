@@ -592,9 +592,9 @@ html, body {
   background-color: white !important;
   border-radius: 8px !important;
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2) !important;
-  max-width: 800px !important;
-  width: 90% !important;
-  max-height: 90vh !important;
+  width: 95% !important;
+  max-width: 1200px !important;
+  max-height: 95vh !important;
   overflow-y: auto !important;
   color: #333 !important;
 }
@@ -605,6 +605,10 @@ html, body {
   align-items: center !important;
   padding: 1rem 1.5rem !important;
   border-bottom: 1px solid #ddd !important;
+  position: sticky !important;
+  top: 0 !important;
+  background-color: white !important;
+  z-index: 1 !important;
 }
 
 .modal-header h2 {
@@ -617,10 +621,21 @@ html, body {
   padding: 1.5rem !important;
 }
 
+.modal-preview {
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  background-color: #000 !important;
+  width: 100% !important;
+  height: 70vh !important;
+  min-height: 400px !important;
+  margin-bottom: 1.5rem !important;
+}
+
 .modal-preview img,
 .modal-preview video {
   max-width: 100% !important;
-  max-height: 50vh !important;
+  max-height: 100% !important;
   object-fit: contain !important;
 }
 

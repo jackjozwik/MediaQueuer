@@ -4,6 +4,7 @@
   import { get } from 'svelte/store';
   import { api } from '$lib/api';
   import { tokenValidated, isTokenValidating } from '$lib/auth';
+  import MediaModal from '../../components/MediaModal.svelte';
   
   // State variables
   let activeTab = 'approval';
@@ -14,6 +15,7 @@
   let users = []; // Added users array
   let totalPlaybackDuration = 0; // Total duration in seconds
   let settings = {};
+  let viewingModalVisible = false; // Controls modal visibility
   let loading = {
     pending: true,
     approved: true,
@@ -87,6 +89,14 @@
     toast.timeoutId = setTimeout(() => {
       toast = {...toast, show: false};
     }, duration);
+  }
+  
+  // A watcher to sync viewingMedia and viewingModalVisible
+  $: viewingModalVisible = !!viewingMedia;
+  
+  // Handle modal being closed by clicking outside
+  function handleModalClose() {
+    viewingMedia = null;
   }
   
   // Initialize component
@@ -203,6 +213,15 @@
           console.log("First media item detailed inspection:", 
             JSON.stringify(pendingMedia[0], null, 2)
           );
+          
+          // Inspect all pending media items for QR codes
+          pendingMedia.forEach((item, index) => {
+            const hasQr = hasQrCode(item);
+            console.log(`Pending media item ${index} (${item.title}) has QR code: ${hasQr}`);
+            if (hasQr) {
+              console.log(`QR code URL: ${getQrCodeUrl(item)}`);
+            }
+          });
         }
       } else {
         error.pending = result.message || 'Failed to load pending media';
@@ -382,9 +401,7 @@
   // Approve media item
   async function approveMedia(id) {
     try {
-      const response = await api.post(`/api/media/approve/${id}`);
-      
-      const result = await response.json();
+      const result = await api.post(`/api/media/approve/${id}`);
       
       if (result.success) {
         // Refresh media lists
@@ -402,9 +419,7 @@
   // Reject media item
   async function rejectMedia(id) {
     try {
-      const response = await api.post(`/api/media/reject/${id}`);
-      
-      const result = await response.json();
+      const result = await api.post(`/api/media/reject/${id}`);
       
       if (result.success) {
         // Refresh pending media list
@@ -421,9 +436,7 @@
   // Delete media item
   async function deleteMedia(id) {
     try {
-      const response = await api.delete(`/api/media/delete/${id}`);
-      
-      const result = await response.json();
+      const result = await api.delete(`/api/media/delete/${id}`);
       
       if (result.success) {
         // Close delete confirmation
@@ -610,9 +623,7 @@
   // Archive media item
   async function archiveMediaItem(id) {
     try {
-      const response = await api.post(`/api/media/archive/${id}`);
-      
-      const result = await response.json();
+      const result = await api.post(`/api/media/archive/${id}`);
       
       if (result.success) {
         // Show success toast
@@ -633,9 +644,7 @@
   // Restore media item from archive
   async function restoreMedia(id) {
     try {
-      const response = await api.post(`/api/media/restore/${id}`);
-      
-      const result = await response.json();
+      const result = await api.post(`/api/media/restore/${id}`);
       
       if (result.success) {
         // Show success toast
@@ -701,9 +710,7 @@
   // Update user role
   async function updateUserRole(userId, newRole) {
     try {
-      const response = await api.put(`/api/admin/users/${userId}/role`, { role: newRole });
-      
-      const data = await response.json();
+      const data = await api.put(`/api/admin/users/${userId}/role`, { role: newRole });
       
       if (!data.success) {
         showToast(data.message || 'Failed to update user role', 'error');
@@ -727,75 +734,16 @@
     }
   }
   
-  // Function to check if media has a QR code - updated to handle nested properties
+  // Update the hasQrCode function to not be dependent on status
   function hasQrCode(media) {
-    console.log("Checking QR code availability for:", media);
-    
-    if (!media) return false;
-    
-    // Look for QR code field at the top level
-    if (media.qr_code_url && media.qr_code_url.trim() !== '') return true;
-    if (media.qr_code && media.qr_code.trim() !== '') return true;
-    if (media.qrcode_url && media.qrcode_url.trim() !== '') return true;
-    if (media.qrcode && media.qrcode.trim() !== '') return true;
-    if (media.qr_code_path && media.qr_code_path.trim() !== '') return true;
-    
-    // Check if the QR code is in a nested property
-    if (media.metadata) {
-      let metadata = media.metadata;
-      
-      // If metadata is a string, try to parse it as JSON
-      if (typeof metadata === 'string') {
-        try {
-          metadata = JSON.parse(metadata);
-        } catch (e) {
-          console.error('Error parsing metadata:', e);
-        }
-      }
-      
-      // Check QR fields in metadata
-      if (metadata.qr_code_url && metadata.qr_code_url.trim() !== '') return true;
-      if (metadata.qr_code && metadata.qr_code.trim() !== '') return true;
-      if (metadata.qrcode_url && metadata.qrcode_url.trim() !== '') return true;
-      if (metadata.qrcode && metadata.qrcode.trim() !== '') return true;
-    }
-    
-    return false;
+    // Remove any check for media.status if it exists
+    // Just check if the media has the necessary properties for QR code display
+    return media && media.id && media.file_type;
   }
   
-  // Function to get QR code URL from media object
+  // Make sure getQrCodeUrl properly forms the URL regardless of approval status
   function getQrCodeUrl(media) {
-    if (!media) return '';
-    
-    // Look for QR code field at the top level
-    if (media.qr_code_url && media.qr_code_url.trim() !== '') return media.qr_code_url;
-    if (media.qr_code && media.qr_code.trim() !== '') return media.qr_code;
-    if (media.qrcode_url && media.qrcode_url.trim() !== '') return media.qrcode_url;
-    if (media.qrcode && media.qrcode.trim() !== '') return media.qrcode;
-    if (media.qr_code_path && media.qr_code_path.trim() !== '') return media.qr_code_path;
-    
-    // Check if the QR code is in a nested property
-    if (media.metadata) {
-      let metadata = media.metadata;
-      
-      // If metadata is a string, try to parse it as JSON
-      if (typeof metadata === 'string') {
-        try {
-          metadata = JSON.parse(metadata);
-        } catch (e) {
-          console.error('Error parsing metadata:', e);
-          return '';
-        }
-      }
-      
-      // Check QR fields in metadata
-      if (metadata.qr_code_url && metadata.qr_code_url.trim() !== '') return metadata.qr_code_url;
-      if (metadata.qr_code && metadata.qr_code.trim() !== '') return metadata.qr_code;
-      if (metadata.qrcode_url && metadata.qrcode_url.trim() !== '') return metadata.qrcode_url;
-      if (metadata.qrcode && metadata.qrcode.trim() !== '') return metadata.qrcode;
-    }
-    
-    return '';
+    return `/api/media/qrcode/${media.id}`;
   }
   
   // Function to view QR code - updated to use getQrCodeUrl
@@ -1369,71 +1317,17 @@
   {/if}
   
   <!-- Media Viewer Modal -->
-  {#if viewingMedia}
-    <div class="modal-overlay" on:click|self={() => viewingMedia = null}>
-      <div class="modal-container">
-        <div class="modal-header">
-          <h2>{viewingMedia.viewing_qr_code ? 'QR Code for: ' + viewingMedia.title : viewingMedia.title || 'Untitled'}</h2>
-          <button class="close-btn" on:click={() => viewingMedia = null}>×</button>
-        </div>
-        <div class="modal-body">
-          <div class="modal-content">
-            <div class="modal-preview">
-              {#if viewingMedia.file_type === 'image' || viewingMedia.file_type.startsWith('image/')}
-                <img src={viewingMedia.file_url} alt={viewingMedia.title} />
-              {:else if viewingMedia.file_type === 'video' || viewingMedia.file_type.startsWith('video/')}
-                <video src={viewingMedia.file_url} controls autoplay></video>
-              {:else}
-                <div class="unknown-media">{viewingMedia.file_type}</div>
-              {/if}
-            </div>
-            
-            <div class="media-info">
-              {#if !viewingMedia.viewing_qr_code}
-                <h3>{viewingMedia.title || 'Untitled'}</h3>
-                <p class="description">{viewingMedia.description || 'No description'}</p>
-                <p class="metadata">
-                  <span class="type">Type: {viewingMedia.file_type}</span>
-                  {#if viewingMedia.file_type === 'image' || viewingMedia.file_type.startsWith('image/')}
-                    <span class="duration">Duration: {viewingMedia.duration || 10}s</span>
-                  {:else if viewingMedia.file_type === 'video' || viewingMedia.file_type.startsWith('video/')}
-                    <span class="duration">Duration: {viewingMedia.duration ? `${viewingMedia.duration}s` : 'Unknown'}</span>
-                  {/if}
-                  <span class="uploader">By: {viewingMedia.uploaded_by}</span>
-                  {#if viewingMedia.approved_by_username}
-                    <span class="approver">Approved by: {viewingMedia.approved_by_username}</span>
-                  {/if}
-                </p>
-              {/if}
-              
-              <div class="modal-actions">
-                {#if !viewingMedia.viewing_qr_code && hasQrCode(viewingMedia)}
-                  <button class="btn-secondary" on:click={() => viewQrCode(viewingMedia)}>
-                    View QR Code
-                  </button>
-                {:else if viewingMedia.viewing_qr_code}
-                  <button class="btn-secondary" on:click={() => viewingMedia = {...viewingMedia, viewing_qr_code: false, file_url: viewingMedia.original_file_url || viewingMedia.file_url, file_type: viewingMedia.original_file_type || viewingMedia.file_type}}>
-                    View Media
-                  </button>
-                {/if}
-
-                {#if viewingMedia.status === 'pending' && !viewingMedia.viewing_qr_code}
-                  <button class="approve-btn" on:click={() => { approveMedia(viewingMedia.id); viewingMedia = null; }}>Approve</button>
-                  <button class="reject-btn" on:click={() => { rejectMedia(viewingMedia.id); viewingMedia = null; }}>Reject</button>
-                {/if}
-                {#if !viewingMedia.viewing_qr_code}
-                  <button class="edit-btn" on:click={() => { showEditForm(viewingMedia); viewingMedia = null; }}>Edit</button>
-                {/if}
-                {#if viewingMedia.status === 'approved' && !viewingMedia.viewing_qr_code}
-                  <button class="delete-btn" on:click={() => { confirmDelete(viewingMedia); viewingMedia = null; }}>Delete</button>
-                {/if}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  {/if}
+  <MediaModal 
+    show={viewingModalVisible} 
+    media={viewingMedia} 
+    on:close={handleModalClose}
+    on:approve={() => { approveMedia(viewingMedia?.id); viewingMedia = null; }}
+    on:reject={() => { rejectMedia(viewingMedia?.id); viewingMedia = null; }}
+    on:edit={() => { showEditForm(viewingMedia); viewingMedia = null; }}
+    on:archive={() => { archiveMediaItem(viewingMedia?.id); viewingMedia = null; }}
+    on:restore={() => { restoreMedia(viewingMedia?.id); viewingMedia = null; }}
+    on:delete={() => { confirmDelete(viewingMedia); viewingMedia = null; }}
+  />
 </div>
 
 <!-- Toast Notification Component -->
@@ -1558,6 +1452,7 @@
     overflow: hidden;
     cursor: grab;
     transition: box-shadow 0.3s, transform 0.3s, background-color 0.3s;
+    align-items: center;
   }
   
   .media-item:hover {
@@ -1615,8 +1510,8 @@
   }
   
   .media-preview {
-    width: 200px;
-    height: 120px;
+    width: 240px;
+    height: 140px;
     overflow: hidden;
     background-color: #000;
     flex-shrink: 0;
@@ -1626,13 +1521,13 @@
   }
   
   .media-preview.small {
-    width: 120px;
-    height: 80px;
+    width: 160px;
+    height: 100px;
   }
   
   .media-card .media-preview {
     width: 100%;
-    height: 180px;
+    height: 200px;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -1737,7 +1632,7 @@
     font-size: 0.9rem;
   }
   
-  .approve-btn, .reject-btn, .edit-btn, .delete-btn, .save-btn, .cancel-btn {
+  .approve-btn, .reject-btn, .edit-btn, .delete-btn, .archive-btn, .restore-btn, .save-btn, .cancel-btn {
     padding: 0.5rem 1rem;
     border: none;
     border-radius: 4px;
@@ -1764,6 +1659,16 @@
   
   .delete-btn {
     background-color: #e53935;
+    color: white;
+  }
+  
+  .archive-btn {
+    background-color: #ff9800;
+    color: white;
+  }
+  
+  .restore-btn {
+    background-color: #5e35b1;
     color: white;
   }
   
@@ -1810,7 +1715,7 @@
     margin-top: 0.25rem;
   }
   
-  /* Modal styles */
+  /* Modal styles - only for edit and delete confirmation modals */
   .modal-overlay {
     position: fixed;
     top: 0;
@@ -1824,13 +1729,13 @@
     z-index: 9999;
   }
   
-  .modal-container {
+  .modal {
     background-color: white;
     border-radius: 8px;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-    width: 90%;
-    max-width: 800px;
-    max-height: 90vh;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+    width: 95%;
+    max-width: 600px;
+    max-height: 95vh;
     overflow-y: auto;
   }
   
@@ -1854,72 +1759,15 @@
     font-size: 1.5rem;
     cursor: pointer;
     color: #777;
+    transition: color 0.2s;
+  }
+  
+  .close-btn:hover {
+    color: #333;
   }
   
   .modal-body {
     padding: 1.5rem;
-  }
-  
-  .modal-content {
-    display: flex;
-    flex-direction: column;
-    width: 100%;
-  }
-  
-  .modal-preview {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    margin-bottom: 1.5rem;
-    background-color: #000;
-    border-radius: 4px;
-    overflow: hidden;
-    width: 100%;
-  }
-  
-  .modal-preview img,
-  .modal-preview video {
-    max-width: 100%;
-    max-height: 50vh;
-    object-fit: contain;
-  }
-  
-  .media-info {
-    width: 100%;
-    padding: 0;
-    color: #333;
-  }
-  
-  .media-info h3 {
-    margin-top: 0;
-    margin-bottom: 1rem;
-    color: #333;
-  }
-  
-  .media-info .description {
-    margin-bottom: 1rem;
-    color: #555;
-  }
-  
-  .modal-actions {
-    display: flex;
-    gap: 0.5rem;
-    margin-top: 1rem;
-    flex-wrap: wrap;
-  }
-  
-  .btn-secondary {
-    background-color: #607d8b;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    padding: 0.5rem 1rem;
-    cursor: pointer;
-    font-size: 0.9rem;
-  }
-  
-  .btn-secondary:hover {
-    background-color: #455a64;
   }
   
   .qr-code-badge {
@@ -1961,5 +1809,67 @@
     margin-bottom: 1rem;
     font-size: 0.9rem;
     color: #856404;
+  }
+  
+  /* Toast notification styles */
+  .toast-notification {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    padding: 1rem 1.5rem;
+    border-radius: 4px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    color: white;
+    max-width: 350px;
+    z-index: 10000;
+    opacity: 0.95;
+    animation: slideIn 0.3s ease-out forwards;
+  }
+  
+  @keyframes slideIn {
+    from {
+      transform: translateY(100px);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 0.95;
+    }
+  }
+  
+  .toast-notification.success {
+    background-color: #43a047;
+    border-left: 5px solid #2e7d32;
+  }
+  
+  .toast-notification.error {
+    background-color: #e53935;
+    border-left: 5px solid #c62828;
+  }
+  
+  .toast-notification.info {
+    background-color: #1976d2;
+    border-left: 5px solid #0d47a1;
+  }
+  
+  .toast-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  
+  .toast-message {
+    margin-right: 1rem;
+    font-weight: 500;
+  }
+  
+  .toast-close {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
   }
 </style>

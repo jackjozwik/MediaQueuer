@@ -32,6 +32,9 @@ router.put('/update/:id', verifyToken, isFacultyOrAdmin, mediaController.updateM
 // New route for updating display order
 router.post('/order', verifyToken, isFacultyOrAdmin, mediaController.updateMediaOrder);
 
+// Get QR code for media - accessible by anyone
+router.get('/qrcode/:id', mediaController.getMediaQRCode);
+
 // Configure storage for QR codes
 const qrCodeStorage = multer.diskStorage({
   destination: function (req, file, cb) {

@@ -20,14 +20,14 @@
           <li class="nav-item">
             <a href="/upload" class="nav-link" class:active={activePage === 'upload'}>Upload</a>
           </li>
-          <li class="nav-item">
-            <a href="/display" class="nav-link" class:active={activePage === 'display'}>Display</a>
-          </li>
           {#if $user && ($user.role === 'admin' || $user.role === 'faculty')}
             <li class="nav-item">
               <a href="/admin" class="nav-link" class:active={activePage === 'admin'}>Admin</a>
             </li>
           {/if}
+          <li class="nav-item">
+            <a href="/display" class="nav-link" class:active={activePage === 'display'}>Display</a>
+          </li>
         </ul>
       </nav>
       

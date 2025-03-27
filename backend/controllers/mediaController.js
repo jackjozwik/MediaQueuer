@@ -307,7 +307,7 @@ const getPendingMedia = async (req, res) => {
     const media = db.prepare(`
       SELECT 
         m.id, m.title, m.description, m.file_path, m.file_type, 
-        m.duration, m.created_at, m.metadata,
+        m.duration, m.created_at, m.metadata, m.qr_code,
         u.username as uploaded_by, u.id as user_id
       FROM media m
       JOIN users u ON m.user_id = u.id
@@ -319,6 +319,8 @@ const getPendingMedia = async (req, res) => {
     const mediaWithUrls = media.map(item => ({
       ...item,
       file_url: `/uploads/${path.basename(item.file_path)}`,
+      // Add QR code URL if it exists
+      qr_code: item.qr_code ? item.qr_code : null,
       metadata: item.metadata ? JSON.parse(item.metadata) : {}
     }));
 
@@ -1068,6 +1070,54 @@ const deleteUserMedia = async (req, res) => {
   }
 };
 
+// Function to get QR code for a specific media item
+const getMediaQRCode = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // Get QR code path from database
+    const media = db.prepare(`
+      SELECT id, qr_code FROM media WHERE id = ?
+    `).get(id);
+
+    if (!media) {
+      return res.status(404).json({
+        success: false,
+        message: 'Media not found'
+      });
+    }
+
+    // If media doesn't have a QR code
+    if (!media.qr_code) {
+      return res.status(404).json({
+        success: false,
+        message: 'No QR code available for this media'
+      });
+    }
+
+    // Extract just the filename from the stored path
+    const qrCodeFileName = path.basename(media.qr_code);
+    const qrCodePath = path.join(__dirname, '../uploads/qrcodes', qrCodeFileName);
+
+    // Check if file exists
+    if (!fs.existsSync(qrCodePath)) {
+      return res.status(404).json({
+        success: false,
+        message: 'QR code file not found'
+      });
+    }
+
+    // Return the file
+    return res.sendFile(qrCodePath);
+  } catch (error) {
+    console.error('Get media QR code error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+};
+
 module.exports = {
   uploadMedia,
   getApprovedMedia,
@@ -1079,6 +1129,7 @@ module.exports = {
   updateMediaOrder,
   uploadMediaQRCode,
   deleteMediaQRCode,
+  getMediaQRCode,
   getSyncDisplayState,   // New endpoint for sync mode
   updateVideoDuration,   // Update video duration
   resetTimeline,         // Reset timeline to start
