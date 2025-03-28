@@ -33,7 +33,7 @@
       </nav>
       
       <div class="actions">
-        <ThemeToggle />
+        <!-- <ThemeToggle /> -->
         
         {#if $user}
           <div class="user-menu">
@@ -81,7 +81,7 @@
   }
 
   .logo-text {
-    background: linear-gradient(90deg, #423cbf 0%, #2481dd 50%);
+    background: linear-gradient(90deg, #2481dd 0%, #2481dd 50%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;

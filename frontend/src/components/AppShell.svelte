@@ -26,9 +26,9 @@
             <div class="copyright">
               © {new Date().getFullYear()} TV Media Queuer
             </div>
-            <div class="theme-toggle-wrapper">
+            <!-- <div class="theme-toggle-wrapper">
               <ThemeToggle />
-            </div>
+            </div> -->
           </div>
         </div>
       </footer>

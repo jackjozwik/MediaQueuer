@@ -56,7 +56,7 @@
   }
   
   .welcome-card {
-    background-color: #e3f2fd;
+    background: linear-gradient(90deg, rgba(222,241,255,1) 0%, rgb(243, 249, 255) 70%);
     border-radius: 8px;
     padding: 1.5rem;
     margin-bottom: 2rem;

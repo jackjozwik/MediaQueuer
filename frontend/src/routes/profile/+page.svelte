@@ -1,7 +1,8 @@
 <!-- src/routes/profile/+page.svelte -->
 <script>
   import { onMount } from 'svelte';
-  import { user, token } from '$lib/auth';
+  import { user, token, tokenValidated, isTokenValidating } from '$lib/auth';
+  import { api } from '$lib/api';
   
   let loading = false;
   let error = null;
@@ -24,19 +25,22 @@
   let imageSuccess = false;
   let imagePreview = null;
   
+  // Modal states
+  let showDeleteImageModal = false;
+  
   // Password change mode
   let changePassword = false;
   
   // Refresh user data from the server
   async function fetchUserData() {
+    // Only fetch if token is validated
+    if (!$tokenValidated) {
+      console.log('Waiting for token validation before fetching user data');
+      return;
+    }
+    
     try {
-      const response = await fetch('/api/users/profile', {
-        headers: {
-          'Authorization': `Bearer ${$token}`
-        }
-      });
-      
-      const result = await response.json();
+      const result = await api.get('/api/users/profile');
       
       if (result.success) {
         // Update local variables
@@ -61,7 +65,10 @@
     }
   }
   
-  onMount(fetchUserData);
+  // Watch for token validation state and fetch data when validated
+  $: if ($tokenValidated) {
+    fetchUserData();
+  }
   
   // Handle form submission
   async function handleSubmit() {
@@ -111,16 +118,7 @@
         userData.newPassword = newPassword;
       }
       
-      const response = await fetch('/api/users/update', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${$token}`
-        },
-        body: JSON.stringify(userData)
-      });
-      
-      const result = await response.json();
+      const result = await api.put('/api/users/update', userData);
       
       if (result.success) {
         // Update user store with new data
@@ -152,8 +150,8 @@
     }
   }
   
-  // Handle image file selection
-  function handleImageSelect(event) {
+  // Handle image file selection and upload automatically
+  async function handleImageSelect(event) {
     const file = event.target.files[0];
     if (!file) return;
     
@@ -174,28 +172,25 @@
       return;
     }
     
-    // Set file for upload
-    imageFile = file;
+    // Create preview immediately
+    imagePreview = URL.createObjectURL(file);
     
-    // Create preview
-    const reader = new FileReader();
-    reader.onload = e => {
-      imagePreview = e.target.result;
-    };
-    reader.readAsDataURL(file);
+    // Upload the file immediately
+    await uploadProfileImage(file);
   }
   
   // Handle profile image upload
-  async function uploadProfileImage() {
-    if (!imageFile) return;
+  async function uploadProfileImage(file) {
+    if (!file) return;
     
     imageLoading = true;
     imageError = null;
     
     try {
       const formData = new FormData();
-      formData.append('profileImage', imageFile);
+      formData.append('profileImage', file);
       
+      // For FormData, we need to use fetch directly with proper headers
       const response = await fetch('/api/users/update-profile-image', {
         method: 'POST',
         headers: {
@@ -216,8 +211,9 @@
           profileImage
         }));
         
-        // Reset file input
-        imageFile = null;
+        // Release the object URL to avoid memory leaks
+        URL.revokeObjectURL(imagePreview);
+        imagePreview = null;
         
         // After 3 seconds, hide success message
         setTimeout(() => {
@@ -225,23 +221,37 @@
         }, 3000);
       } else {
         imageError = result.message || 'Failed to upload profile image';
+        // Reset preview on error
+        URL.revokeObjectURL(imagePreview);
+        imagePreview = null;
       }
     } catch (err) {
       console.error('Profile image upload error:', err);
       imageError = 'An unexpected error occurred. Please try again.';
+      // Reset preview on error
+      URL.revokeObjectURL(imagePreview);
+      imagePreview = null;
     } finally {
       imageLoading = false;
+      imageFile = null;
     }
+  }
+  
+  // Open delete image confirmation modal
+  function openDeleteImageModal() {
+    showDeleteImageModal = true;
+  }
+  
+  // Close delete image confirmation modal
+  function closeDeleteImageModal() {
+    showDeleteImageModal = false;
   }
   
   // Handle profile image deletion
   async function deleteProfileImage() {
     if (!profileImage) return;
     
-    if (!confirm('Are you sure you want to remove your profile picture?')) {
-      return;
-    }
-    
+    closeDeleteImageModal();
     imageLoading = true;
     imageError = null;
     
@@ -316,20 +326,15 @@
             accept="image/jpeg,image/png,image/gif" 
             on:change={handleImageSelect}
             class="file-input"
+            disabled={imageLoading}
           />
-          <label for="profileImage" class="btn btn-outline">
-            {profileImage ? 'Change Picture' : 'Upload Picture'}
+          <label for="profileImage" class="btn btn-outline" class:disabled={imageLoading}>
+            {imageLoading ? 'Uploading...' : (profileImage ? 'Change Picture' : 'Upload Picture')}
           </label>
         </div>
         
-        {#if imageFile}
-          <button class="btn btn-primary" on:click={uploadProfileImage} disabled={imageLoading}>
-            {imageLoading ? 'Uploading...' : 'Save Picture'}
-          </button>
-        {/if}
-        
         {#if profileImage}
-          <button class="btn btn-danger" on:click={deleteProfileImage} disabled={imageLoading}>
+          <button class="btn btn-danger" on:click={openDeleteImageModal} disabled={imageLoading}>
             Remove
           </button>
         {/if}
@@ -441,7 +446,11 @@
             />
             <div class="form-hint">Role can only be changed by an administrator</div>
           </div>
-          
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary" disabled={loading}>
+              {loading ? 'Updating...' : 'Update Profile'}
+            </button>
+          </div>
           <div class="password-section">
             <button 
               type="button"
@@ -488,16 +497,35 @@
               </div>
             {/if}
           </div>
-          
-          <div class="form-actions">
-            <button type="submit" class="btn btn-primary" disabled={loading}>
-              {loading ? 'Updating...' : 'Update Profile'}
-            </button>
-          </div>
         </form>
       </div>
     </div>
   </div>
+  
+  <!-- Delete Image Confirmation Modal -->
+  {#if showDeleteImageModal}
+    <div class="modal-overlay">
+      <div class="modal modal-small">
+        <div class="modal-header">
+          <h2>Confirm Removal</h2>
+          <button class="close-btn" on:click={closeDeleteImageModal}>&times;</button>
+        </div>
+        
+        <div class="modal-body">
+          <p>Are you sure you want to remove your profile picture?</p>
+          
+          <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" on:click={closeDeleteImageModal}>
+              Cancel
+            </button>
+            <button type="button" class="btn btn-danger" on:click={deleteProfileImage}>
+              Remove
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -752,5 +780,71 @@
       flex-wrap: wrap;
       justify-content: center;
     }
+  }
+  
+  /* Add modal styles */
+  .modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+  
+  .modal {
+    background: white;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 500px;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+  
+  .modal-small {
+    max-width: 400px;
+  }
+  
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    border-bottom: 1px solid #e0e0e0;
+  }
+  
+  .modal-header h2 {
+    margin: 0;
+    font-size: 1.25rem;
+  }
+  
+  .close-btn {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+  }
+  
+  .modal-body {
+    padding: 1rem;
+  }
+  
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 1.5rem;
+  }
+  
+  /* Add a disabled class for file upload label */
+  .disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 </style> 

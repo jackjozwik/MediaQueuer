@@ -69,12 +69,21 @@ async function processRequestQueue() {
  * @returns {Promise<Object>} - Response data
  */
 export async function apiRequest(endpoint, options = {}, allowQueue = true) {
-  // Get validation state
+  // Get current validation states
   const isValidating = get(isTokenValidating);
+  const isValidated = get(tokenValidated);
   
   // If we're validating the token and this request can be queued, add to queue
   if (isValidating && allowQueue && !endpoint.includes('/api/auth/')) {
     console.log(`Queuing API request during token validation: ${endpoint}`);
+    return new Promise((resolve, reject) => {
+      requestQueue.push({ endpoint, options, resolve, reject });
+    });
+  }
+  
+  // If token hasn't been validated yet and this isn't an auth endpoint, queue the request
+  if (!isValidated && !isValidating && allowQueue && !endpoint.includes('/api/auth/')) {
+    console.log(`Token not yet validated, queuing request: ${endpoint}`);
     return new Promise((resolve, reject) => {
       requestQueue.push({ endpoint, options, resolve, reject });
     });
@@ -108,8 +117,8 @@ export async function apiRequest(endpoint, options = {}, allowQueue = true) {
     if (response.status === 401) {
       console.warn('Unauthorized API request:', endpoint);
       
-      // Don't logout if we're in the process of validating the token
-      if (!isValidating) {
+      // Don't logout if we're in the process of validating the token or if this is during initial load
+      if (!isValidating && isValidated) {
         console.log('Not in validation process, dispatching unauthorized event');
         // Dispatch a global unauthorized event
         if (typeof window !== 'undefined') {
@@ -125,7 +134,7 @@ export async function apiRequest(endpoint, options = {}, allowQueue = true) {
         logout();
         throw new Error('Authentication required. Please log in again.');
       } else {
-        console.log('In validation process, returning error without logout');
+        console.log('In validation process or token not yet validated, returning error without logout');
         throw new Error('Authentication error during validation');
       }
     }

@@ -1,7 +1,8 @@
 <!-- src/routes/profile/uploads/+page.svelte -->
 <script>
   import { onMount } from 'svelte';
-  import { user, token } from '$lib/auth';
+  import { user, token, tokenValidated, isTokenValidating } from '$lib/auth';
+  import { api } from '$lib/api';
   
   let uploads = [];
   let loading = true;
@@ -20,17 +21,17 @@
   
   // Fetch all uploads for the current user
   async function fetchUserUploads() {
+    // Only fetch if token is validated
+    if (!$tokenValidated) {
+      console.log('Waiting for token validation before fetching user uploads');
+      return;
+    }
+    
     loading = true;
     error = null;
     
     try {
-      const response = await fetch('/api/media/user-uploads', {
-        headers: {
-          'Authorization': `Bearer ${$token}`
-        }
-      });
-      
-      const result = await response.json();
+      const result = await api.get('/api/media/user-uploads');
       
       if (result.success) {
         uploads = result.data.media;
@@ -45,7 +46,10 @@
     }
   }
   
-  onMount(fetchUserUploads);
+  // Watch for token validation state and fetch data when validated
+  $: if ($tokenValidated) {
+    fetchUserUploads();
+  }
   
   // Open edit modal for a media item
   function openEditModal(media) {
@@ -74,19 +78,10 @@
     successMessage = null;
     
     try {
-      const response = await fetch(`/api/media/${editingMedia.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${$token}`
-        },
-        body: JSON.stringify({
-          title: editTitle,
-          description: editDescription
-        })
+      const result = await api.put(`/api/media/${editingMedia.id}`, {
+        title: editTitle,
+        description: editDescription
       });
-      
-      const result = await response.json();
       
       if (result.success) {
         // Update the media in the local list
@@ -123,14 +118,7 @@
     successMessage = null;
     
     try {
-      const response = await fetch(`/api/media/${deleteMediaId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${$token}`
-        }
-      });
-      
-      const result = await response.json();
+      const result = await api.delete(`/api/media/${deleteMediaId}`);
       
       if (result.success) {
         // Remove the deleted media from the local list
