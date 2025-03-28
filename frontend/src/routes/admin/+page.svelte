@@ -379,10 +379,9 @@
       for (const setting of settingsToUpdate) {
         const response = await api.put(`/api/admin/settings/${setting.key}`, { value: setting.value });
         
-        const result = await response.json();
-        
-        if (!result.success) {
-          throw new Error(`Failed to update ${setting.key}: ${result.message}`);
+        // The api client already parses the JSON response, don't parse it again
+        if (!response.success) {
+          throw new Error(`Failed to update ${setting.key}: ${response.message}`);
         }
       }
       
@@ -508,16 +507,15 @@
       
       const response = await api.put(`/api/media/update/${editingMedia.id}`, dataToSend);
       
-      const result = await response.json();
-      
-      if (result.success) {
+      // The api client already parses the JSON response, don't parse it again
+      if (response.success) {
         // Close edit form
         editingMedia = null;
         
         // Refresh media lists
         fetchApprovedMedia();
       } else {
-        alert(result.message || 'Failed to update media');
+        alert(response.message || 'Failed to update media');
       }
     } catch (err) {
       console.error('Error updating media:', err);
@@ -603,10 +601,9 @@
       
       const response = await api.post('/api/media/order', { items });
       
-      const result = await response.json();
-      
-      if (!result.success) {
-        alert(result.message || 'Failed to update display order');
+      // The api client already parses the JSON response, don't parse it again
+      if (!response.success) {
+        alert(response.message || 'Failed to update display order');
       }
     } catch (err) {
       console.error('Error updating display order:', err);
@@ -1238,12 +1235,14 @@
           <form on:submit|preventDefault={submitEditForm}>
             <div class="form-group">
               <label for="title">Title:</label>
-              <input type="text" id="title" bind:value={editForm.title} required />
+              <input type="text" id="title" bind:value={editForm.title} required maxlength="50" />
+              <div class="character-count">{editForm.title.length}/50 characters</div>
             </div>
             
             <div class="form-group">
               <label for="description">Description:</label>
-              <textarea id="description" bind:value={editForm.description} rows="3"></textarea>
+              <textarea id="description" bind:value={editForm.description} rows="3" maxlength="100"></textarea>
+              <div class="character-count">{editForm.description.length}/100 characters</div>
             </div>
             
             {#if editingMedia.file_type === 'image' || editingMedia.file_type.startsWith('image/')}
@@ -1705,6 +1704,13 @@
   .help-text {
     font-size: 0.85rem;
     color: #666;
+    margin-top: 0.25rem;
+  }
+  
+  .character-count {
+    font-size: 0.8rem;
+    color: #666;
+    text-align: right;
     margin-top: 0.25rem;
   }
   

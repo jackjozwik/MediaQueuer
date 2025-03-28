@@ -210,17 +210,26 @@
                     <label for={`title-${item.id}`}>Title:</label>
                     <input 
                       type="text" 
+                      class="edit-input"
                       id={`title-${item.id}`}
                       bind:value={item.title}
+                      placeholder="Media title"
+                      maxlength="50"
                     />
+                    <div class="character-count">{item.title.length}/50 characters</div>
                   </div>
                   
                   <div class="form-group">
                     <label for={`desc-${item.id}`}>Description:</label>
                     <textarea 
+                      class="edit-input"
                       id={`desc-${item.id}`}
                       bind:value={item.description}
+                      placeholder="Media description"
+                      rows="3"
+                      maxlength="100"
                     ></textarea>
+                    <div class="character-count">{item.description.length}/100 characters</div>
                   </div>
                   
                   {#if item.file_type === 'image'}
@@ -483,5 +492,21 @@
       padding: 0.25rem 0.5rem;
       border-radius: 4px;
       cursor: pointer;
+    }
+    
+    /* Add character count styles */
+    .character-count {
+      font-size: 0.8rem;
+      color: #666;
+      text-align: right;
+      margin-top: 0.25rem;
+    }
+    
+    .edit-input {
+      width: 100%;
+      padding: 0.5rem;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      margin-bottom: 0.25rem;
     }
   </style>

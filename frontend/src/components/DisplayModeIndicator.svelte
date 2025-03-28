@@ -46,7 +46,7 @@
 >
   <span class="mode-text">
     {#if mode === 'sync'}
-      SYNC MODE
+      LIVE
     {:else}
       INDIVIDUAL MODE
     {/if}
@@ -77,7 +77,7 @@
   }
   
   .sync-mode {
-    background-color: rgba(44, 62, 80, 0.8);
+    background-color: rgba(0, 0, 0, 0.7);
   }
   
   .mode-text {
@@ -92,10 +92,10 @@
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background-color: #2ecc71;
+    background-color: #75777a;
   }
   
   .sync-mode .mode-text::before {
-    background-color: #3498db;
+    background-color: #db3434;
   }
 </style> 

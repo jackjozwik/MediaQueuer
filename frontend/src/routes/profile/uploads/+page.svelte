@@ -254,7 +254,9 @@
                 class="form-control" 
                 bind:value={editTitle} 
                 required
+                maxlength="50"
               />
+              <div class="character-count">{editTitle.length}/50 characters</div>
             </div>
             
             <div class="form-group">
@@ -264,7 +266,9 @@
                 class="form-control" 
                 bind:value={editDescription}
                 rows="4"
+                maxlength="100"
               ></textarea>
+              <div class="character-count">{editDescription.length}/100 characters</div>
             </div>
             
             <div class="modal-note">
@@ -620,5 +624,12 @@
     background-color: #d4edda;
     color: #155724;
     border: 1px solid #c3e6cb;
+  }
+  
+  .character-count {
+    font-size: 0.8rem;
+    color: #666;
+    text-align: right;
+    margin-top: 0.25rem;
   }
 </style> 

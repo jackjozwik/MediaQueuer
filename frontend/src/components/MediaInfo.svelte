@@ -50,8 +50,9 @@
     left: 0;
     background-color: rgba(0, 0, 0, 0.7);
     box-sizing: border-box;
-    width: 650px;
-    max-width: 65%;
+    width: auto;
+    min-width: 600px; /* Base width */
+    max-width: 900px; /* Maximum width before wrapping */
     min-height: 130px;
     height: auto;
     border-top-right-radius: 8px;
@@ -59,7 +60,7 @@
 
   .info-content {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     padding: 16px;
     min-height: 100%;
     overflow: visible;
@@ -92,7 +93,7 @@
     flex: 1;
     margin-right: 20px;
     min-width: 0;
-    max-width: 100%;
+    max-width: 100%; /* Allow content to wrap at max width */
   }
 
   .title {
@@ -102,6 +103,12 @@
     overflow: visible;
     white-space: normal;
     text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    line-height: 1.3;
+    word-wrap: break-word; /* Add word wrapping */
   }
 
   .description {
@@ -110,9 +117,12 @@
     overflow: hidden;
     text-overflow: ellipsis;
     display: -webkit-box;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
     opacity: 0.9;
+    line-height: 1.4;
+    word-wrap: break-word; /* Add word wrapping */
+    max-width: 100%; /* Contain within parent */
   }
 
   .creator {
@@ -169,13 +179,15 @@
     
     .media-info {
       max-width: 90%;
+      min-width: 300px;
     }
   }
   
-  /* For wider screens, ensure the info box doesn't stretch too much */
+  /* For wider screens, set a reasonable min and max width */
   @media (min-width: 1600px) {
     .media-info {
-      max-width: 550px; /* Absolute max width for very large displays */
+      min-width: 300px; /* Minimum width for large displays */
+      max-width: 700px; /* Can expand up to this for very long content */
     }
   }
 </style> 

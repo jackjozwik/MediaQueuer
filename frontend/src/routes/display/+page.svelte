@@ -188,7 +188,7 @@
 			showDebug = !showDebug;
 			return;
 		}
-		
+
 		// Only in individual display mode (not sync mode)
 		if (window.location.pathname === '/display' || window.location.pathname === '/display/') {
 			// Left arrow: go to previous media
@@ -196,13 +196,13 @@
 				event.preventDefault();
 				showPreviousMedia();
 			}
-			
+
 			// Right arrow: go to next media
 			else if (event.key === 'ArrowRight') {
 				event.preventDefault();
 				advanceMedia();
 			}
-			
+
 			// Space: toggle play/pause for videos
 			else if (event.key === ' ' && isVideo && mediaElement) {
 				event.preventDefault();
@@ -210,26 +210,26 @@
 			}
 		}
 	}
-	
+
 	// Go to previous media item
 	function showPreviousMedia() {
 		if (mediaItems.length === 0) return;
-		
+
 		// Clear any existing timers
 		if (refreshInterval) {
 			clearTimeout(refreshInterval);
 		}
-		
+
 		// Calculate previous index with wrap-around
 		const prevIndex = (currentIndex - 1 + mediaItems.length) % mediaItems.length;
 		console.log(`Going to previous item: ${prevIndex} of ${mediaItems.length}`);
 		showMedia(prevIndex);
 	}
-	
+
 	// Toggle play/pause for videos
 	function togglePlayPause() {
 		if (!mediaElement) return;
-		
+
 		if (mediaElement.paused) {
 			mediaElement.play();
 			isPlaying = true;
@@ -257,18 +257,7 @@
 </svelte:head>
 
 <div class="display-container">
-	{#if showIndicator}
-		<div
-			class="mode-indicator"
-			on:click={() => (showIndicator = true)}
-			on:mouseenter={() => (showIndicator = true)}
-		>
-			<div class="mode-label">
-				<span>INDIVIDUAL VIEW</span>
-			</div>
-			<a href="/display/live" class="mode-toggle">Switch to Live Mode</a>
-		</div>
-	{/if}
+
 	<DisplayModeIndicator mode="individual" {isAdmin} />
 	<Debug item={currentItem} visible={showDebug} />
 
@@ -296,7 +285,7 @@
 					src={mediaUrl}
 					bind:this={mediaElement}
 					autoplay
-					muted={false}
+					muted
 					playsinline
 					controls
 					on:ended={handleVideoEnded}
@@ -328,35 +317,60 @@
 	{/if}
 </div>
 
-<a href="/display/sync" class="mode-switch-button">
-  Switch to Synchronized Mode
-</a>
+
+<div class="mode-indicator">
+	<div class="mode-label">
+		<span>INDIVIDUAL VIEW</span>
+	</div>
+	<a href="/display/sync" class="mode-toggle">Switch to Live</a>
+</div>
+
+<!-- {#if showIndicator}
+<div
+	class="mode-indicator"
+	on:click={() => (showIndicator = true)}
+	on:mouseenter={() => (showIndicator = true)}
+>
+	<div class="mode-label">
+		<span>INDIVIDUAL VIEW</span>
+	</div>
+	<a href="/display/live" class="mode-toggle">Switch to Live Mode</a>
+</div>
+{/if} -->
+
+<!-- <a href="/display/sync" class="mode-switch-button">
+  Switch to Live
+</a> -->
 
 <!-- Playback controls -->
 <div class="playback-controls">
-  <button class="control-btn prev-btn" on:click={showPreviousMedia} title="Previous">
-    <svg viewBox="0 0 24 24" width="24" height="24">
-      <path fill="currentColor" d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
-    </svg>
-  </button>
-  
-  <button class="control-btn play-pause-btn" on:click={togglePlayPause} title={isPlaying ? 'Pause' : 'Play'}>
-    {#if isPlaying}
-      <svg viewBox="0 0 24 24" width="24" height="24">
-        <path fill="currentColor" d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-      </svg>
-    {:else}
-      <svg viewBox="0 0 24 24" width="24" height="24">
-        <path fill="currentColor" d="M8 5v14l11-7z"/>
-      </svg>
-    {/if}
-  </button>
-  
-  <button class="control-btn next-btn" on:click={advanceMedia} title="Next">
-    <svg viewBox="0 0 24 24" width="24" height="24">
-      <path fill="currentColor" d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
-    </svg>
-  </button>
+	<button class="control-btn prev-btn" on:click={showPreviousMedia} title="Previous">
+		<svg viewBox="0 0 24 24" width="24" height="24">
+			<path fill="currentColor" d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
+		</svg>
+	</button>
+
+	<button
+		class="control-btn play-pause-btn"
+		on:click={togglePlayPause}
+		title={isPlaying ? 'Pause' : 'Play'}
+	>
+		{#if isPlaying}
+			<svg viewBox="0 0 24 24" width="24" height="24">
+				<path fill="currentColor" d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+			</svg>
+		{:else}
+			<svg viewBox="0 0 24 24" width="24" height="24">
+				<path fill="currentColor" d="M8 5v14l11-7z" />
+			</svg>
+		{/if}
+	</button>
+
+	<button class="control-btn next-btn" on:click={advanceMedia} title="Next">
+		<svg viewBox="0 0 24 24" width="24" height="24">
+			<path fill="currentColor" d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" />
+		</svg>
+	</button>
 </div>
 
 <style>
@@ -450,64 +464,81 @@
 		background-color: rgba(255, 0, 0, 0.3);
 		border-radius: 8px;
 	}
-    
-    /* Media queries for responsive design */
-    @media (max-width: 768px) {
-        /* Responsive styles that don't relate to MediaInfo */
-    }
-    
-    /* Mode switch button */
-    .mode-switch-button {
-        position: absolute;
-        bottom: 20px;
-        right: 20px;
-        background-color: rgba(0, 0, 0, 0.6);
-        color: white;
-        text-decoration: none;
-        padding: 8px 16px;
-        border-radius: 4px;
-        font-size: 14px;
-        z-index: 1002;
-    }
-    
-    .mode-switch-button:hover {
-        background-color: rgba(0, 0, 0, 0.8);
-    }
-    
-    /* Playback controls */
-    .playback-controls {
-        position: absolute;
-        bottom: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        display: flex;
-        gap: 20px;
-        background-color: rgba(0, 0, 0, 0.6);
-        padding: 10px 20px;
-        border-radius: 30px;
-        z-index: 1002;
-    }
-    
-    .control-btn {
-        width: 40px;
-        height: 40px;
-        border-radius: 50%;
-        background-color: rgba(255, 255, 255, 0.2);
-        border: none;
-        color: white;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        transition: background-color 0.2s;
-    }
-    
-    .control-btn:hover {
-        background-color: rgba(255, 255, 255, 0.3);
-    }
-    
-    .play-pause-btn {
-        width: 50px;
-        height: 50px;
-    }
+
+	/* Media queries for responsive design */
+	@media (max-width: 768px) {
+		/* Responsive styles that don't relate to MediaInfo */
+	}
+
+	/* Mode indicator styles */
+	.mode-indicator {
+		position: absolute;
+		bottom: 20px;
+		right: 20px;
+		background-color: rgba(0, 0, 0, 0.6);
+		color: white;
+		text-decoration: none;
+		padding: 8px 16px;
+		border-radius: 4px;
+		font-size: 14px;
+		z-index: 1002;
+	}
+
+	.mode-label {
+		display: flex;
+		align-items: center;
+		font-weight: 600;
+		gap: 8px;
+	}
+
+	.mode-toggle {
+		color: rgba(255, 255, 255, 0.7);
+		text-decoration: none;
+		font-size: 12px;
+		text-align: center;
+		padding: 4px;
+		border-radius: 4px;
+		transition: all 0.2s ease;
+	}
+	.mode-toggle:hover {
+		background-color: rgba(255, 255, 255, 0.2);
+		color: white;
+	}
+
+	/* Playback controls */
+	.playback-controls {
+		position: absolute;
+		bottom: 20px;
+		left: 50%;
+		transform: translateX(-50%);
+		display: flex;
+		gap: 20px;
+		background-color: rgba(0, 0, 0, 0.6);
+		padding: 10px 20px;
+		border-radius: 30px;
+		z-index: 1002;
+	}
+
+	.control-btn {
+		width: 40px;
+		height: 40px;
+		border-radius: 50%;
+		background-color: rgba(255, 255, 255, 0.2);
+		border: none;
+		color: white;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		cursor: pointer;
+		transition: background-color 0.2s;
+	}
+
+	.control-btn:hover {
+		background-color: rgba(255, 255, 255, 0.3);
+	}
+
+	.play-pause-btn {
+		width: 50px;
+		height: 50px;
+	}
 </style>
