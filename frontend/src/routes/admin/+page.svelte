@@ -866,11 +866,11 @@
                     <span class="uploader">By: {media.uploaded_by}</span>
                     
                     <!-- Add QR Code badge if available -->
-                    {#if hasQrCode(media)}
-                      <span class="qr-code-badge" on:click={() => viewQrCode(media)}>
+                    <!-- {#if hasQrCode(media)}
+                      <span class="qr-code-badge" >
                         <span class="qr-icon">🔳</span> QR Code
                       </span>
-                    {/if}
+                    {/if} -->
                   </p>
                 </div>
                 <div class="media-actions">
@@ -911,14 +911,14 @@
           </div>
           
           <!-- Display mode toggle -->
-          <div class="view-toggle">
+          <!-- <div class="view-toggle">
             <button class="view-btn" class:active={viewMode === 'list'} on:click={() => viewMode = 'list'}>
               List View
             </button>
             <button class="view-btn" class:active={viewMode === 'grid'} on:click={() => viewMode = 'grid'}>
               Grid View
             </button>
-          </div>
+          </div> -->
           
           <!-- List View (with drag & drop ordering) -->
           {#if viewMode === 'list'}
@@ -967,11 +967,11 @@
                       {/if}
                       
                       <!-- Add QR Code badge if available -->
-                      {#if hasQrCode(media)}
-                        <span class="qr-code-badge" on:click={() => viewQrCode(media)}>
+                      <!-- {#if hasQrCode(media)}
+                        <span class="qr-code-badge" >
                           <span class="qr-icon">🔳</span> QR Code
                         </span>
-                      {/if}
+                      {/if} -->
                     </p>
                   </div>
                   <div class="media-actions">
@@ -985,7 +985,7 @@
             </div>
           {:else}
             <!-- Grid View -->
-            <div class="media-list grid">
+            <!-- <div class="media-list grid">
               {#each approvedMedia as media (media.id)}
                 <div class="media-card">
                   <div class="order-badge">{media.display_order || '–'}</div>
@@ -1002,6 +1002,7 @@
                     <h3>{media.title || 'Untitled'}</h3>
                     <p class="description">{media.description || 'No description'}</p>
                     <p class="metadata">
+
                       <span class="type">Type: {media.file_type}</span>
                       {#if media.file_type === 'image' || media.file_type.startsWith('image/')}
                         <span class="duration">Duration: {media.duration || 10}s</span>
@@ -1013,12 +1014,6 @@
                         <span class="approver">Approved by: {media.approved_by_username}</span>
                       {/if}
                       
-                      <!-- Add QR Code badge if available -->
-                      {#if hasQrCode(media)}
-                        <span class="qr-code-badge" on:click={() => viewQrCode(media)}>
-                          <span class="qr-icon">🔳</span> QR Code
-                        </span>
-                      {/if}
                     </p>
                   </div>
                   <div class="media-actions">
@@ -1029,7 +1024,7 @@
                   </div>
                 </div>
               {/each}
-            </div>
+            </div> -->
           {/if}
         {/if}
       </div>
@@ -1660,7 +1655,7 @@
   }
   
   .restore-btn {
-    background-color: #5e35b1;
+    background-color: #43a047;
     color: white;
   }
   
@@ -1777,14 +1772,14 @@
     padding: 2px 6px;
     border-radius: 4px;
     font-size: 0.8em;
-    cursor: pointer;
+    /* cursor: pointer; */
     margin-left: 8px;
     font-weight: bold;
   }
   
-  .qr-code-badge:hover {
+  /* .qr-code-badge:hover {
     background-color: #303f9f;
-  }
+  } */
   
   .qr-icon {
     margin-right: 4px;
@@ -1870,5 +1865,94 @@
     cursor: pointer;
     padding: 0;
     line-height: 1;
+  }
+  
+  .users-table-container {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+  }
+
+  .users-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+  }
+
+  .users-table th {
+    background-color: #f8f9fa;
+    color: #495057;
+    font-weight: 600;
+    padding: 12px 16px;
+    text-align: left;
+    border-bottom: 2px solid #e9ecef;
+  }
+
+  .users-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid #e9ecef;
+    color: #212529;
+  }
+
+  .users-table tr:hover td {
+    background-color: #f8f9fa;
+  }
+
+  .role-badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    text-transform: capitalize;
+  }
+
+  .role-badge.role-admin {
+    background-color: #f8d7da;
+    color: #721c24;
+  }
+
+  .role-badge.role-faculty {
+    background-color: #fff3cd;
+    color: #856404;
+  }
+
+  .role-badge.role-student {
+    background-color: #d4edda;
+    color: #155724;
+  }
+
+  .role-select {
+    padding: 6px 12px;
+    border-radius: 4px;
+    border: 1px solid #ced4da;
+    font-size: 0.9rem;
+    background: white;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .role-select:hover {
+    border-color: #2481dd;
+    box-shadow: 0 0 0 1px #2481dd;
+  }
+
+  .empty-state {
+    padding: 2rem;
+    text-align: center;
+    color: #6c757d;
+    background: white;
+    border-radius: 8px;
+  }
+
+  @media (max-width: 768px) {
+    .users-table-container {
+      overflow-x: auto;
+    }
+    
+    .users-table {
+      min-width: 600px;
+    }
   }
 </style>

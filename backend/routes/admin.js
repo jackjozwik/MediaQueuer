@@ -109,7 +109,7 @@ router.put('/users/:id/role', verifyToken, isAdmin, (req, res) => {
     }
     
     // Update role
-    db.prepare('UPDATE users SET role = ?, updated_at = datetime("now") WHERE id = ?')
+    db.prepare('UPDATE users SET role = ?, updated_at = datetime(\'now\') WHERE id = ?')
       .run(role, id);
     
     return res.json({
