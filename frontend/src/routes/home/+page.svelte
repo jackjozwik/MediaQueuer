@@ -15,7 +15,7 @@
 
 <div class="home-container">
   <div class="welcome-card">
-    <h1>Welcome, {userName}!</h1>
+    <h1>Hello, {userName.charAt(0).toUpperCase() + userName.slice(1)} 👋</h1>
     <p>This application helps manage content for the hallway TVs to showcase student work.</p>
   </div>
   

@@ -880,13 +880,6 @@
                   <button class="approve-btn" on:click={() => approveMedia(media.id)}>Approve</button>
                   <button class="reject-btn" on:click={() => rejectMedia(media.id)}>Reject</button>
                   <button class="edit-btn" on:click={() => showEditForm(media)}>Edit</button>
-                  
-                  <!-- QR Code button if available -->
-                  {#if hasQrCode(media)}
-                    <button class="qr-btn" on:click={() => viewQrCode(media)}>
-                      View QR
-                    </button>
-                  {/if}
                 </div>
               </div>
             {/each}

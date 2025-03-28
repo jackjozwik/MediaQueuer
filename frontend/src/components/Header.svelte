@@ -9,7 +9,8 @@
   <div class="container">
     <div class="header-content">
       <a href="/" class="logo">
-        <span class="logo-text">TV Media Queuer</span>
+        <span class="logo-text">MediaQueuer</span>
+        
       </a>
       
       <nav class="nav">
@@ -37,8 +38,11 @@
         {#if $user}
           <div class="user-menu">
             <span class="user-name">{$user.name || $user.username}</span>
-            <a href="/profile" class="profile-link">Profile</a>
-            <a href="/logout" class="logout-link">Logout</a>
+            <div class="user-dropdown">
+              <a href="/profile" class="dropdown-link">Profile</a>
+              <a href="/profile/uploads" class="dropdown-link">My Uploads</a>
+              <a href="/logout" class="dropdown-link">Logout</a>
+            </div>
           </div>
         {:else}
           <a href="/login" class="btn btn-primary login-btn">Login</a>
@@ -77,7 +81,7 @@
   }
 
   .logo-text {
-    background: linear-gradient(90deg, var(--color-primary) 0%, #4f46e5 100%);
+    background: linear-gradient(90deg, #423cbf 0%, #2481dd 50%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -131,22 +135,56 @@
   .user-menu {
     display: flex;
     align-items: center;
-    gap: var(--space-4);
+    position: relative;
   }
 
   .user-name {
     font-weight: var(--font-weight-medium);
     color: var(--color-text-primary);
+    padding: var(--space-2) var(--space-3);
+    cursor: pointer;
+    border-radius: var(--radius-md);
+    transition: background-color 0.2s;
   }
 
-  .profile-link, .logout-link {
+  .user-name:hover {
+    background-color: var(--color-hover);
+  }
+
+  .user-dropdown {
+    display: flex;
+    flex-direction: column;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    min-width: 150px;
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(10px);
+    transition: opacity 0.2s, transform 0.2s, visibility 0.2s;
+    z-index: var(--z-40);
+  }
+
+  .user-menu:hover .user-dropdown {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+  }
+
+  .dropdown-link {
+    padding: var(--space-2) var(--space-3);
     color: var(--color-text-secondary);
-    font-size: var(--font-size-sm);
     text-decoration: none;
-    transition: var(--transition-colors);
+    transition: background-color 0.2s, color 0.2s;
+    white-space: nowrap;
   }
 
-  .profile-link:hover, .logout-link:hover {
+  .dropdown-link:hover {
+    background-color: var(--color-hover);
     color: var(--color-primary);
   }
 
